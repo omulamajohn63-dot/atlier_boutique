@@ -1,0 +1,45 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ page_title }} | ATELIER Admin{% endblock %}
+
+{% block content %}
+<div style="max-width: 560px; margin: 64px auto; padding: 0 24px;">
+  <div class="card">
+    <div class="card-body" style="padding: 32px 28px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+        <div style="width: 42px; height: 42px; border-radius: 12px; background: #FDF0F0; color: #C92A2A; display: flex; align-items: center; justify-content: center; font-size: 22px;">
+          <i class="ph ph-warning"></i>
+        </div>
+        <div>
+          <h2 style="margin: 0; font-size: 22px; color: var(--text);">Confirm action</h2>
+        </div>
+      </div>
+
+      <p style="margin: 0 0 24px; font-size: 15px; line-height: 1.6; color: var(--text-secondary);">
+        {{ message }}
+      </p>
+
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        {% if confirm_post.action == 'delete-product' or confirm_post.action == 'delete-selected-products' or confirm_post.action == 'archive-product' or confirm_post.action == 'update-product' %}
+          <a href="/admin/dashboard/products/" class="btn btn-secondary">Cancel</a>
+        {% else %}
+          <a href="/admin/dashboard/" class="btn btn-secondary">Cancel</a>
+        {% endif %}
+        <form method="post" action="{{ confirm_url }}" style="margin: 0; display: inline-block;">
+          {% csrf_token %}
+          {% for key, value in confirm_post.items %}
+            {% if value is iterable and value is not string %}
+              {% for item in value %}
+                <input type="hidden" name="{{ key }}" value="{{ item }}">
+              {% endfor %}
+            {% else %}
+              <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endif %}
+          {% endfor %}
+          <button type="submit" class="btn btn-danger">Confirm</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

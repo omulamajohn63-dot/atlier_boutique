@@ -1,0 +1,240 @@
+import {
+  ProductDTO,
+  CategoryDTO,
+  CartDTO,
+  OrderDTO,
+  PaymentIntentDTO,
+  PaginatedProductsResponse,
+} from '../types/api';
+import { CustomerNotification } from '../types';
+import { supabase } from './supabaseClient';
+
+const CART_STORAGE_KEY = 'atelier_server_cart_id';
+// Default to the Django backend for local development. The frontend is expected to
+// read real catalog data from the database unless a different API origin is configured.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+
+export function getOrCreateCartId(): string {
+  if (typeof window === 'undefined') return 'cart_ssr';
+  let cartId = localStorage.getItem(CART_STORAGE_KEY);
+  if (!cartId) {
+    cartId = `cart_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    localStorage.setItem(CART_STORAGE_KEY, cartId);
+  } 
+  return cartId;
+}
+
+export function saveCartId(cartId: string): void {
+  if (typeof window !== 'undefined' && cartId) {
+    localStorage.setItem(CART_STORAGE_KEY, cartId);
+  }
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}, includeAuth = true): Promise<T> {
+  const cartId = getOrCreateCartId();
+  const headers = new Headers(options.headers || {});
+  headers.set('Content-Type', 'application/json');
+  headers.set('x-cart-id', cartId);
+
+  if (includeAuth) {
+    const session = (await supabase?.auth.getSession())?.data.session;
+    if (session?.access_token) {
+      headers.set('Authorization', `Bearer ${session.access_token}`);
+    }
+  }
+
+  const requestOptions = {
+    ...options,
+    headers,
+    credentials: 'include' as const,
+  };
+  let res = await fetch(`${API_BASE_URL}${endpoint}`, requestOptions);
+
+  // Supabase access tokens are short-lived. Refresh once before surfacing a 401.
+  if (res.status === 401 && includeAuth && supabase) {
+    const { data } = await supabase.auth.refreshSession();
+    const refreshedToken = data.session?.access_token;
+    if (refreshedToken) {
+      headers.set('Authorization', `Bearer ${refreshedToken}`);
+      res = await fetch(`${API_BASE_URL}${endpoint}`, requestOptions);
+    }
+  }
+
+  // Track returned cart header if any
+  const returnedCartId = res.headers.get('x-cart-id');
+  if (returnedCartId) {
+    saveCartId(returnedCartId);
+  }
+
+  if (!res.ok) {
+    let errorJson: { error?: { code?: string; message?: string; details?: unknown } } = {};
+    try {
+      errorJson = await res.json();
+    } catch {
+      // ignore
+    }
+    const message = errorJson.error?.message || `API request failed with status ${res.status}`;
+    const code = errorJson.error?.code || 'UNKNOWN_ERROR';
+    const error = new Error(message) as Error & { code?: string; details?: unknown; status?: number };
+    error.code = code;
+    error.details = errorJson.error?.details;
+    error.status = res.status;
+    throw error;
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  // Products
+  async getProducts(params: {
+    page?: number;
+    limit?: number;
+    category?: string;
+    search?: string;
+    sort?: string;
+  } = {}): Promise<PaginatedProductsResponse> {
+    const query = new URLSearchParams();
+    if (params.page) query.set('page', String(params.page));
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.category && params.category !== 'all') query.set('category', params.category);
+    if (params.search) query.set('search', params.search);
+    if (params.sort) query.set('sort', params.sort);
+
+    return request<PaginatedProductsResponse>(`/api/products/?${query.toString()}`, {}, false);
+  },
+
+  async getProduct(idOrSlug: string): Promise<ProductDTO> {
+    return request<ProductDTO>(`/api/products/${encodeURIComponent(idOrSlug)}/`, {}, false);
+  },
+
+  // Categories
+  async getCategories(): Promise<CategoryDTO[]> {
+    return request<CategoryDTO[]>('/api/categories/', {}, false);
+  },
+
+  async getCategory(slug: string): Promise<{ category: CategoryDTO; products: ProductDTO[] }> {
+    return request<{ category: CategoryDTO; products: ProductDTO[] }>(`/api/categories/${encodeURIComponent(slug)}/`, {}, false);
+  },
+
+  // Cart
+  async getCart(): Promise<CartDTO> {
+    return request<CartDTO>('/api/cart');
+  },
+
+  async addCartItem(variantId: string, quantity: number): Promise<CartDTO> {
+    return request<CartDTO>('/api/cart/items', {
+      method: 'POST',
+      body: JSON.stringify({ variantId, quantity }),
+    });
+  },
+
+  async updateCartItem(itemId: string, quantity: number): Promise<CartDTO> {
+    return request<CartDTO>(`/api/cart/items/${encodeURIComponent(itemId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    });
+  },
+
+  async removeCartItem(itemId: string): Promise<CartDTO> {
+    return request<CartDTO>(`/api/cart/items/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async clearCart(): Promise<CartDTO> {
+    return request<CartDTO>('/api/cart', {
+      method: 'DELETE',
+    });
+  },
+
+  async cancelOrder(orderNumber: string): Promise<OrderDTO> {
+    return request<OrderDTO>(`/api/orders/${encodeURIComponent(orderNumber)}/cancel`, {
+      method: 'POST',
+    });
+  },
+
+  async receiveOrder(orderNumber: string): Promise<OrderDTO> {
+    return request<OrderDTO>(`/api/orders/${encodeURIComponent(orderNumber)}/mark-received-paid`, {
+      method: 'POST',
+    });
+  },
+
+  // Orders
+  async createOrder(payload: {
+    customer: {
+      fullName: string;
+      email: string;
+      phone: string;
+      addressLine1: string;
+      addressLine2?: string;
+      city: string;
+      county: string;
+      postalCode?: string;
+      deliveryInstructions?: string;
+    };
+    shippingMethod?: 'standard' | 'express';
+    paymentMethod?: 'mpesa' | 'card' | 'cash_on_delivery' | 'pay_on_delivery';
+    notes?: string;
+  }): Promise<OrderDTO> {
+    return request<OrderDTO>('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getOrder(orderNumber: string): Promise<OrderDTO> {
+    return request<OrderDTO>(`/api/orders/${encodeURIComponent(orderNumber)}`);
+  },
+
+  // Payments
+  async createPaymentIntent(
+    orderNumber: string,
+    method: 'mpesa' | 'card' = 'mpesa',
+    phoneNumber?: string
+  ): Promise<PaymentIntentDTO> {
+    return request<PaymentIntentDTO>('/api/payments/create-intent', {
+      method: 'POST',
+      body: JSON.stringify({ orderNumber, method, phoneNumber }),
+    });
+  },
+
+  async confirmPayment(
+    orderNumber: string,
+    paymentIntentId: string,
+    gatewayReference?: string
+  ): Promise<OrderDTO> {
+    return request<OrderDTO>('/api/payments/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ orderNumber, paymentIntentId, gatewayReference }),
+    });
+  },
+
+  // Admin
+  async getNotifications(limit = 20): Promise<{ count: number; unread_count: number; results: CustomerNotification[] }> {
+    return request<{ count: number; unread_count: number; results: CustomerNotification[] }>(`/api/notifications${limit ? `?limit=${limit}` : ''}`);
+  },
+
+  async markNotificationRead(notificationId: string): Promise<{ ok: boolean; unread_count?: number }> {
+    return request<{ ok: boolean; unread_count?: number }>(`/api/notifications/${encodeURIComponent(notificationId)}/read/`, {
+      method: 'POST',
+    });
+  },
+
+  async markAllNotificationsRead(): Promise<{ ok: boolean; unread_count: number; updated: number }> {
+    return request<{ ok: boolean; unread_count: number; updated: number }>('/api/notifications/read-all/', {
+      method: 'POST',
+    });
+  },
+
+  async getAdminAccess(): Promise<{ status: string; role: string }> {
+    return request<{ status: string; role: string }>('/api/admin/access');
+  },
+
+  async adjustInventory(variantId: string, delta: number, reason: string): Promise<{ variantId: string; stockQuantity: number }> {
+    return request<{ variantId: string; stockQuantity: number }>(`/api/admin/inventory/${encodeURIComponent(variantId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ delta, reason }),
+    });
+  },
+};

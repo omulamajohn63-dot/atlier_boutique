@@ -1,0 +1,78 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Bulk Product Import{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:catalog_product_changelist' %}">Products</a> &rsaquo;
+  <span>Bulk Product Import</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Bulk Product Import</h1>
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <fieldset class="module aligned">
+    <div class="form-row">
+      <div>
+        <label for="id_file">CSV/XLSX file</label>
+        <input type="file" name="file" accept=".csv,.xlsx,.xls" required id="id_file">
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label for="id_image_files">Product images</label>
+        <input type="file" name="image_files" multiple accept="image/*" id="id_image_files">
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="submit-row">
+    <input type="submit" value="Import products" class="default">
+    <a href="{% url 'admin:catalog_product_download_template' %}" class="button">Download CSV template</a>
+  </div>
+</form>
+
+{% if result %}
+<hr>
+<h2>Import results</h2>
+<p><strong>Rows total:</strong> {{ result.rows_total }}</p>
+<p><strong>Rows success:</strong> {{ result.rows_success }}</p>
+<p><strong>Rows failed:</strong> {{ result.rows_failed }}</p>
+
+{% if result.messages %}
+<ul>
+  {% for message in result.messages %}
+  <li>{{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if result.rows %}
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Row</th>
+      <th>SKU</th>
+      <th>Status</th>
+      <th>Errors</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in result.rows %}
+    <tr>
+      <td>{{ row.row_number }}</td>
+      <td>{{ row.sku }}</td>
+      <td>{{ row.status }}</td>
+      <td>{% if row.errors %}{{ row.errors|join:", " }}{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endblock %}

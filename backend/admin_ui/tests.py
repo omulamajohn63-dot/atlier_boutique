@@ -1,0 +1,1202 @@
+from io import BytesIO
+
+from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from unittest.mock import patch
+from PIL import Image
+
+from catalog.models import Category, Product, ProductVariant
+from orders.models import Order
+from admin_ui.models import AdminNotification, CustomerNotification
+
+
+class AdminDashboardTests(TestCase):
+    def setUp(self):
+        self.staff = get_user_model().objects.create_superuser(
+            username='dashboard-staff', password='test-password', email='staff@example.com')
+        self.category = Category.objects.create(name='Dresses', slug='dresses')
+
+    def test_storefront_root_redirects_to_frontend(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, 'http://127.0.0.1:3000/')
+
+    def test_dashboard_requires_staff_session(self):
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/login/', response.url)
+
+    def test_staff_can_render_dashboard(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Good morning.')
+
+    def test_dashboard_recent_orders_show_total_amount(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='recent-order-total-cart')
+        Order.objects.create(
+            order_number='AT-RECENT-TOTAL-001',
+            cart=cart,
+            customer={'fullName': 'Recent Buyer',
+                      'email': 'recent@example.com'},
+            subtotal_minor=1200,
+            total_minor=1450,
+            shipping_cost_minor=250,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PROCESSING,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'KES 14.50')
+
+    def test_staff_can_see_approve_button_for_pay_on_delivery_order(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='pay-on-delivery-approve-cart')
+        order = Order.objects.create(
+            order_number='AT-PAY-ON-DELIVERY-001',
+            cart=cart,
+            customer={'fullName': 'Delivery Buyer',
+                      'email': 'delivery@example.com'},
+            subtotal_minor=1000,
+            total_minor=1500,
+            shipping_cost_minor=500,
+            payment_method='pay_on_delivery',
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.PENDING,
+        )
+
+        self.client.force_login(self.staff)
+        response = self.client.get(f'/admin/dashboard/orders/{order.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Approve & confirm order')
+
+    def test_order_creation_creates_admin_notification(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='notification-order-cart')
+        Order.objects.create(
+            order_number='AT-NOTIFY-ORDER-001',
+            cart=cart,
+            customer={'fullName': 'Notification Buyer',
+                      'email': 'notify@example.com'},
+            subtotal_minor=1500,
+            total_minor=1800,
+            shipping_cost_minor=300,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.PENDING,
+        )
+
+        notification = AdminNotification.objects.filter(
+            category='order',
+            title='Order placed',
+        ).order_by('-created_at').first()
+
+        self.assertIsNotNone(notification)
+        self.assertIn('Notification Buyer', notification.message)
+
+    def test_dashboard_renders_pending_revenue_kpi_without_counting_pending_orders_in_total_revenue(self):
+        from cart.models import Cart
+
+        pending_cart = Cart.objects.create(cart_key='pending-revenue-kpi-cart')
+        Order.objects.create(
+            order_number='AT-PENDING-REVENUE-001',
+            cart=pending_cart,
+            customer={'fullName': 'Pending Revenue Buyer',
+                      'email': 'pending@example.com'},
+            subtotal_minor=1000,
+            total_minor=1100,
+            shipping_cost_minor=100,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.PENDING,
+        )
+        approved_cart = Cart.objects.create(
+            cart_key='approved-revenue-kpi-cart')
+        Order.objects.create(
+            order_number='AT-APPROVED-REVENUE-001',
+            cart=approved_cart,
+            customer={'fullName': 'Approved Revenue Buyer',
+                      'email': 'approved@example.com'},
+            subtotal_minor=1000,
+            total_minor=1500,
+            shipping_cost_minor=500,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.CONFIRMED,
+        )
+
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Pending Revenue')
+        self.assertContains(response, 'KES 11')
+        self.assertContains(response, 'KES 15')
+
+    def test_dashboard_renders_unread_admin_notifications(self):
+        AdminNotification.objects.create(
+            recipient=self.staff,
+            category='payment',
+            title='Payment received',
+            message='Payment received for order AT-PAID-001.',
+            link='/admin/dashboard/orders/',
+            is_read=False,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Payment received')
+        self.assertContains(response, 'notification-badge')
+
+    def test_notification_can_be_marked_read(self):
+        notification = AdminNotification.objects.create(
+            recipient=self.staff,
+            category='order',
+            title='Order placed',
+            message='Order AT-READ-001 was placed.',
+            link='/admin/dashboard/orders/',
+            is_read=False,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            f'/admin/dashboard/notifications/{notification.pk}/read/')
+
+        self.assertEqual(response.status_code, 200)
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_unread_admin_notifications_api_returns_recent_alerts(self):
+        AdminNotification.objects.create(
+            recipient=self.staff,
+            category='payment',
+            title='Payment received',
+            message='Payment received for order AT-PAID-001.',
+            link='/admin/dashboard/orders/',
+            is_read=False,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/notifications/unread/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['count'], 1)
+        self.assertEqual(
+            response.json()['results'][0]['title'], 'Payment received')
+
+    def test_admin_order_notification_route_does_not_crash(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='order-notification-route-cart')
+        order = Order.objects.create(
+            order_number='AT-NOTIFICATION-ROUTE-001',
+            cart=cart,
+            customer={'fullName': 'Route Buyer', 'email': 'route@example.com'},
+            subtotal_minor=1200,
+            total_minor=1500,
+            shipping_cost_minor=300,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PROCESSING,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(f'/admin/dashboard/orders/{order.pk}/')
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_order_approval_notifies_customer(self):
+        from cart.models import Cart
+        from orders.services import approve_order
+
+        user = get_user_model().objects.create_user(
+            username='approved-customer',
+            email='approved.customer@example.com',
+            password='test-password',
+        )
+        cart = Cart.objects.create(cart_key='order-approval-notify-cart')
+        order = Order.objects.create(
+            order_number='AT-ORDER-APPROVAL-NOTIFY-001',
+            cart=cart,
+            user=user,
+            customer={'fullName': 'Approved Buyer',
+                      'email': 'approved.customer@example.com'},
+            subtotal_minor=1200,
+            total_minor=1500,
+            shipping_cost_minor=300,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PENDING,
+        )
+
+        approve_order(order)
+
+        notification = CustomerNotification.objects.filter(
+            user=user,
+            title='Order confirmed',
+        ).order_by('-created_at').first()
+
+        self.assertIsNotNone(notification)
+        self.assertEqual(order.status, Order.Status.CONFIRMED)
+        self.assertIn(order.order_number, notification.message)
+        self.assertFalse(AdminNotification.objects.filter(
+            category='order',
+            title='Order confirmed',
+            message__icontains=order.order_number,
+        ).exists())
+
+    def test_low_stock_creates_admin_notification(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Low Stock Product',
+            slug='low-stock-product',
+            description='Needs restock soon.',
+            price_minor=15000,
+            status=Product.Status.ACTIVE,
+        )
+        ProductVariant.objects.create(
+            product=product,
+            sku='LOW-STOCK-001',
+            size='M',
+            color='Black',
+            stock_quantity=2,
+        )
+
+        notification = AdminNotification.objects.filter(
+            category='inventory',
+            title='Low stock alert',
+        ).order_by('-created_at').first()
+
+        self.assertIsNotNone(notification)
+        self.assertIn('Low Stock Product', notification.message)
+
+    def test_customer_notification_is_created_for_order(self):
+        user = get_user_model().objects.create_user(
+            username='customer-order-notify',
+            email='customer@example.com',
+            password='test-password',
+        )
+        Cart = __import__('cart.models', fromlist=['Cart']).Cart
+        cart = Cart.objects.create(cart_key='notification-customer-cart')
+        order = Order.objects.create(
+            order_number='AT-CUSTOMER-NOTIFY-001',
+            cart=cart,
+            user=user,
+            customer={'fullName': 'Customer Alert',
+                      'email': 'customer@example.com'},
+            subtotal_minor=1200,
+            total_minor=1500,
+            shipping_cost_minor=300,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.PENDING,
+        )
+
+        notification = CustomerNotification.objects.filter(
+            user=user,
+            title='Order placed',
+        ).order_by('-created_at').first()
+
+        self.assertIsNotNone(notification)
+        self.assertIn('AT-CUSTOMER-NOTIFY-001', notification.message)
+        self.assertEqual(notification.link,
+                         f'/account/orders/{order.order_number}')
+
+    def test_customer_notifications_endpoint_returns_user_items(self):
+        user = get_user_model().objects.create_user(
+            username='customer-notifications',
+            email='customer.notifications@example.com',
+            password='test-password',
+        )
+        CustomerNotification.objects.create(
+            user=user,
+            category='order',
+            title='Order placed',
+            message='Your order AT-API-001 has been placed.',
+            link='/account/orders',
+            is_read=False,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get('/api/notifications')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['count'], 1)
+        self.assertEqual(
+            response.json()['results'][0]['title'], 'Order placed')
+
+    def test_dashboard_sales_overview_uses_real_order_data(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='sales-overview-cart')
+        Order.objects.create(
+            order_number='AT-SALES-OVERVIEW-001',
+            cart=cart,
+            customer={'fullName': 'Sales Buyer', 'email': 'sales@example.com'},
+            subtotal_minor=2000,
+            total_minor=2200,
+            shipping_cost_minor=200,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.DELIVERED,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'sales-chart-bar')
+        self.assertContains(response, 'data-value="22.00"')
+
+    def test_dashboard_sales_overview_range_selector_changes_period(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/', {'range': '30'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="30" selected')
+        self.assertContains(response, '1 Month')
+
+    def test_staff_can_render_products_page_spec(self):
+        self.client.force_login(self.staff)
+        product_one = Product.objects.create(
+            category=self.category,
+            name='Atelier Silk Wrap Dress',
+            slug='atelier-silk-wrap-dress',
+            description='A refined evening silhouette.',
+            price_minor=480000,
+            status=Product.Status.ACTIVE,
+            images=['/media/products/atelier-silk-dress.jpg'],
+        )
+        product_two = Product.objects.create(
+            category=self.category,
+            name='Eva Linen Set',
+            slug='eva-linen-set',
+            description='Relaxed daily wear.',
+            price_minor=395000,
+            status=Product.Status.ACTIVE,
+            images=['/media/products/eva-linen-set.jpg'],
+        )
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Products')
+        self.assertContains(response, 'Checkbox')
+        self.assertContains(response, 'Product Image')
+        self.assertContains(response, 'Product Name')
+        self.assertContains(response, 'Category')
+        self.assertContains(response, 'Price')
+        self.assertContains(response, 'Stock')
+        self.assertContains(response, 'Status')
+        self.assertContains(response, 'Actions')
+        self.assertContains(response, 'View')
+        self.assertContains(response, 'Edit')
+        self.assertContains(response, 'Duplicate')
+        self.assertContains(response, 'Archive')
+        self.assertContains(response, 'Delete')
+        self.assertContains(response, product_one.name)
+        self.assertContains(response, product_two.name)
+        self.assertContains(response, 'admin-product-thumb')
+
+    def test_products_page_renders_real_database_records(self):
+        self.client.force_login(self.staff)
+        product = Product.objects.create(
+            category=self.category,
+            name='Database Verified Product',
+            slug='database-verified-product',
+            description='Created in the database for verification.',
+            price_minor=15000,
+            status=Product.Status.ACTIVE,
+            images=['/media/products/database-verified-product.png'],
+        )
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, product.name)
+        self.assertContains(response, product.images[0])
+
+    def test_products_page_includes_checkbox_column_data(self):
+        self.client.force_login(self.staff)
+        Product.objects.create(
+            category=self.category,
+            name='Checkbox Row Product',
+            slug='checkbox-row-product',
+            description='Row should include a checkbox field.',
+            price_minor=25000,
+            status=Product.Status.ACTIVE,
+        )
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="admin-row-check"')
+
+    def test_product_more_actions_dropdown_has_working_links(self):
+        self.client.force_login(self.staff)
+        product = Product.objects.create(
+            category=self.category,
+            name='Action Dropdown Product',
+            slug='action-dropdown-product',
+            description='This row should expose working actions.',
+            price_minor=9000,
+            status=Product.Status.ACTIVE,
+        )
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'More actions')
+        self.assertContains(
+            response, f'href="/admin/dashboard/products/{product.id}/"')
+        self.assertContains(
+            response, f'href="/admin/dashboard/products/{product.id}/edit/"')
+        self.assertContains(
+            response, f'href="/admin/dashboard/products/{product.id}/delete/"')
+
+    @patch('admin_ui.views.ProductGenerationService.generate_product_metadata')
+    def test_add_product_generates_metadata_and_internal_code(self, generate_metadata):
+        generate_metadata.return_value = {
+            'description': 'A polished silk dress for evening occasions.',
+            'slug': 'luna-silk-dress',
+            'ai_generated': True,
+        }
+        self.client.force_login(self.staff)
+        image_buffer = BytesIO()
+        Image.new('RGB', (1, 1), color='blue').save(image_buffer, format='PNG')
+
+        response = self.client.post('/admin/dashboard/products/new/', {
+            'name': 'Luna Silk Dress',
+            'category': str(self.category.id),
+            'price': '2450',
+            'status': 'ACTIVE',
+            'sku': '',
+            'size': 'M',
+            'color': 'Ivory',
+            'stock_quantity': '5',
+            'image_file': SimpleUploadedFile(
+                'luna.png', image_buffer.getvalue(), content_type='image/png'),
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        product = Product.objects.get(slug='luna-silk-dress')
+        variant = product.variants.get()
+        self.assertEqual(product.description,
+                         'A polished silk dress for evening occasions.')
+        self.assertEqual(variant.sku, 'AT-LUNA-SILK-DRESS')
+        generate_metadata.assert_called_once_with(
+            'Luna Silk Dress', str(self.category.id))
+
+    def test_staff_products_page_renders_product_model_image(self):
+        self.client.force_login(self.staff)
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Wrap Top',
+            slug='linen-wrap-top',
+            description='A breathable wrap top for softer styling.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+            images=['/media/products/test-product-image.png'],
+        )
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, product.name)
+        self.assertContains(response, product.images[0])
+
+    def test_staff_pages_render_single_string_product_images(self):
+        self.client.force_login(self.staff)
+        product = Product.objects.create(
+            category=self.category,
+            name='Single String Image Product',
+            slug='single-string-image-product',
+            description='This product stores its image as a single string.',
+            price_minor=18000,
+            status=Product.Status.ACTIVE,
+            images='/media/products/string-image.png',
+        )
+
+        list_response = self.client.get('/admin/dashboard/products/')
+        detail_response = self.client.get(
+            f'/admin/dashboard/products/{product.id}/')
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, '/media/products/string-image.png')
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(
+            detail_response, '/media/products/string-image.png')
+
+    def test_staff_product_names_are_clickable_links_to_detail_page(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Wrap Top',
+            slug='linen-wrap-top-link',
+            description='A breathable wrap top for softer styling.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="/admin/dashboard/products/{product.id}/"',
+            html=False,
+        )
+        self.assertContains(response, product.name)
+
+    def test_staff_can_search_products_by_name(self):
+        Product.objects.create(
+            category=self.category,
+            name='Silk Evening Gown',
+            slug='silk-evening-gown',
+            description='A refined evening silhouette.',
+            price_minor=18000,
+            status=Product.Status.ACTIVE,
+        )
+        Product.objects.create(
+            category=self.category,
+            name='Cotton Travel Tee',
+            slug='cotton-travel-tee',
+            description='Relaxed daily wear.',
+            price_minor=9000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            '/admin/dashboard/products/', {'q': 'Evening'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Silk Evening Gown')
+        self.assertNotContains(response, 'Cotton Travel Tee')
+
+    def test_staff_products_page_actions_render_as_dropdown(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="admin-action-select"')
+        self.assertContains(response, '>View<')
+        self.assertContains(response, '>Edit<')
+        self.assertContains(response, '>Duplicate<')
+        self.assertContains(response, '>Archive<')
+        self.assertContains(response, '>Delete<')
+
+    def test_staff_can_open_create_product_page(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/products/new/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Add a product')
+
+    def test_staff_can_open_product_import_page_in_dashboard(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/products/import/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Bulk Product Import')
+
+    def test_ai_upload_without_google_key_shows_clear_warning(self):
+        self.client.force_login(self.staff)
+        csv_data = (
+            'name,price,category,sku,stock_quantity\n'
+            'Luna Silk Dress,2450,Dresses,SKU-LUNA-001,10\n'
+        )
+
+        response = self.client.post(
+            '/admin/dashboard/products/import/',
+            {
+                'file': SimpleUploadedFile(
+                    'products.csv', csv_data.encode('utf-8'), content_type='text/csv'),
+                'generate_ai': 'on',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'AI image generation is enabled')
+        self.assertContains(response, 'GOOGLE_API_KEY')
+
+    def test_staff_can_open_product_detail_page(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Top',
+            slug='linen-top',
+            description='A breathable linen top for warm days.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(f'/admin/dashboard/products/{product.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Product Details')
+        self.assertContains(response, 'Linen Top')
+
+    def test_staff_can_increase_stock_from_product_detail_page(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Top',
+            slug='linen-top-restock',
+            description='A breathable linen top for warm days.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            sku='LINEN-TOP-RESTOCK',
+            stock_quantity=4,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(f'/admin/dashboard/products/{product.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Increase stock')
+        self.assertContains(response, 'Restock')
+
+        restock_response = self.client.post(
+            '/admin/dashboard/inventory/adjust/',
+            {'variant': str(variant.id), 'delta': 7, 'reason': 'restock'},
+            follow=True,
+        )
+
+        self.assertEqual(restock_response.status_code, 200)
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 11)
+
+    def test_staff_can_open_edit_product_page(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Top',
+            slug='linen-top',
+            description='A breathable linen top for warm days.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            f'/admin/dashboard/products/{product.id}/edit/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Linen Top')
+
+    def test_staff_can_open_admin_user_invite_page(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/admin-users/invite/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Invite Admin')
+
+    def test_admin_dashboard_topbar_profile_icon_targets_profile_page(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response, 'href="/admin/dashboard/profile/"', count=1)
+        self.assertContains(response, 'admin-avatar')
+
+    def test_staff_can_open_profile_settings_page(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/profile/settings/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'My Profile')
+
+    def test_staff_categories_page_actions_render_as_dropdown(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/categories/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="admin-action-select"')
+        self.assertContains(response, '>Edit<')
+        self.assertContains(response, '>Delete<')
+
+    def test_staff_can_open_stock_adjustment_page(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/inventory/adjust/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Update availability')
+
+    def test_admin_orders_page_renders_real_orders_from_database(self):
+        from cart.models import Cart
+        from orders.models import Order
+
+        cart = Cart.objects.create(cart_key='order-admin-cart')
+        order = Order.objects.create(
+            order_number='AT-ORDER-ADMIN-001',
+            cart=cart,
+            customer={'full_name': 'Jane Doe', 'email': 'jane@example.com'},
+            subtotal_minor=1200,
+            total_minor=1400,
+            shipping_cost_minor=200,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PROCESSING,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/orders/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, order.order_number)
+        self.assertContains(response, 'Jane Doe')
+        self.assertContains(response, 'Paid')
+
+    def test_staff_can_filter_orders_by_status_and_payment_status(self):
+        from cart.models import Cart
+
+        paid_processing_cart = Cart.objects.create(
+            cart_key='order-filter-paid-processing')
+        pending_cart = Cart.objects.create(cart_key='order-filter-pending')
+        Order.objects.create(
+            order_number='AT-ORDER-FILTER-PAID',
+            cart=paid_processing_cart,
+            customer={'fullName': 'Alice Buyer', 'email': 'alice@example.com'},
+            subtotal_minor=1200,
+            total_minor=1400,
+            shipping_cost_minor=200,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PROCESSING,
+        )
+        Order.objects.create(
+            order_number='AT-ORDER-FILTER-PENDING',
+            cart=pending_cart,
+            customer={'fullName': 'Bob Buyer', 'email': 'bob@example.com'},
+            subtotal_minor=2000,
+            total_minor=2200,
+            shipping_cost_minor=200,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PENDING,
+            status=Order.Status.PENDING,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/orders/', {
+            'status': Order.Status.PROCESSING,
+            'payment_status': Order.PaymentStatus.PAID,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'AT-ORDER-FILTER-PAID')
+        self.assertNotContains(response, 'AT-ORDER-FILTER-PENDING')
+
+    def test_staff_can_approve_paid_order(self):
+        from cart.models import Cart
+
+        cart = Cart.objects.create(cart_key='order-admin-approve-cart')
+        order = Order.objects.create(
+            order_number='AT-ORDER-ADMIN-APPROVE-001',
+            cart=cart,
+            customer={'fullName': 'Jane Doe', 'email': 'jane@example.com'},
+            subtotal_minor=1200,
+            total_minor=1400,
+            shipping_cost_minor=200,
+            payment_method='mpesa',
+            payment_status=Order.PaymentStatus.PAID,
+            status=Order.Status.PENDING,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            f'/admin/dashboard/orders/{order.id}/approve/', follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CONFIRMED)
+        self.assertContains(response, 'Order approved')
+
+    def test_staff_can_create_category(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/categories/new/', {
+            'name': 'Accessories',
+            'slug': 'accessories',
+            'description': 'Finishing pieces for every look.',
+            'image_url': 'https://example.com/accessories.jpg',
+            'is_active': 'on',
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        category = Category.objects.get(slug='accessories')
+        self.assertEqual(category.name, 'Accessories')
+        self.assertTrue(category.is_active)
+
+    def test_staff_can_edit_category(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            f'/admin/dashboard/categories/{self.category.id}/edit/', {
+                'name': 'Evening Dresses',
+                'slug': 'evening-dresses',
+                'description': 'After-dark silhouettes.',
+                'image_url': '',
+                'is_active': 'on',
+            })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.name, 'Evening Dresses')
+        self.assertEqual(self.category.slug, 'evening-dresses')
+
+    def test_staff_can_delete_unused_category(self):
+        category = Category.objects.create(name='Unused', slug='unused')
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'delete-category',
+            'category_id': str(category.id),
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertFalse(Category.objects.filter(pk=category.id).exists())
+
+    def test_staff_cannot_delete_category_used_by_product(self):
+        Product.objects.create(
+            category=self.category,
+            name='Category Product',
+            slug='category-product',
+            description='A product keeping its category in use.',
+            price_minor=10000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'delete-category',
+            'category_id': str(self.category.id),
+        }, follow=True)
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertTrue(Category.objects.filter(pk=self.category.id).exists())
+        self.assertContains(response, 'products still use it')
+
+    def test_staff_can_create_product_and_variant(self):
+        self.client.force_login(self.staff)
+        image_buffer = BytesIO()
+        Image.new('RGB', (1, 1), color='blue').save(image_buffer, format='PNG')
+        upload = SimpleUploadedFile(
+            'dress-create.png', image_buffer.getvalue(), content_type='image/png')
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'create-product',
+            'name': 'Silk Dress',
+            'slug': 'silk-dress',
+            'category': str(self.category.id),
+            'description': 'A lightweight silk dress for evening wear.',
+            'price': '245.00',
+            'status': Product.Status.ACTIVE,
+            'sku': 'SILK-S',
+            'size': 'S',
+            'color': 'Black',
+            'stock_quantity': '4',
+            'image_file': upload,
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        product = Product.objects.get(slug='silk-dress')
+        self.assertEqual(product.price_minor, 24500)
+        self.assertEqual(product.variants.get().stock_quantity, 4)
+
+    def test_staff_can_upload_local_product_image_when_url_is_missing(self):
+        self.client.force_login(self.staff)
+        image_buffer = BytesIO()
+        Image.new('RGB', (1, 1), color='red').save(image_buffer, format='PNG')
+        upload = SimpleUploadedFile(
+            'dress-upload.png',
+            image_buffer.getvalue(),
+            content_type='image/png',
+        )
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'create-product',
+            'name': 'Silk Dress Upload',
+            'slug': 'silk-dress-upload',
+            'category': str(self.category.id),
+            'description': 'An evening dress that can be uploaded locally without a remote URL.',
+            'price': '260.00',
+            'status': Product.Status.ACTIVE,
+            'sku': 'UPLOAD-S',
+            'size': 'M',
+            'color': 'Ivory',
+            'stock_quantity': '2',
+            'image_file': upload,
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        product = Product.objects.get(slug='silk-dress-upload')
+        self.assertEqual(len(product.images), 1)
+        self.assertIn('/media/products/', product.images[0])
+        self.assertTrue(product.images[0].endswith('.png'))
+
+    def test_staff_can_update_product_from_dashboard(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Top',
+            slug='linen-top',
+            description='A breathable linen top for warm days.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'update-product',
+            'product_id': str(product.id),
+            'name': 'Linen Top Updated',
+            'slug': 'linen-top-updated',
+            'category': str(self.category.id),
+            'description': 'Updated linen top description for the shop.',
+            'price': '149.00',
+            'status': Product.Status.ACTIVE,
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        product.refresh_from_db()
+        self.assertEqual(product.name, 'Linen Top Updated')
+        self.assertEqual(product.slug, 'linen-top-updated')
+        self.assertEqual(product.price_minor, 14900)
+
+    def test_staff_can_archive_product_from_dashboard(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Archived Dress',
+            slug='archived-dress',
+            description='A dress that is being archived from the collection.',
+            price_minor=11000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'archive-product',
+            'product_id': str(product.id),
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        product.refresh_from_db()
+        self.assertEqual(product.status, Product.Status.ARCHIVED)
+
+    def test_staff_can_delete_product_from_dashboard(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Delete Me Dress',
+            slug='delete-me-dress',
+            description='A product that can be removed from the catalogue.',
+            price_minor=11000,
+            status=Product.Status.DRAFT,
+        )
+        product_id = product.id
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'delete-product',
+            'product_id': str(product_id),
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertFalse(Product.objects.filter(pk=product_id).exists())
+
+    def test_staff_can_delete_multiple_selected_products_from_dashboard(self):
+        first = Product.objects.create(
+            category=self.category,
+            name='Delete Me First',
+            slug='delete-me-first',
+            description='Should be deleted in bulk.',
+            price_minor=11000,
+            status=Product.Status.DRAFT,
+        )
+        second = Product.objects.create(
+            category=self.category,
+            name='Delete Me Second',
+            slug='delete-me-second',
+            description='Also should be deleted in bulk.',
+            price_minor=12000,
+            status=Product.Status.DRAFT,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'delete-selected-products',
+            'product_ids': [str(first.id), str(second.id)],
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertFalse(Product.objects.filter(
+            pk__in=[first.id, second.id]).exists())
+
+    def test_staff_can_view_confirmation_page_for_bulk_delete(self):
+        first = Product.objects.create(
+            category=self.category,
+            name='Delete Me First',
+            slug='delete-me-first-confirm',
+            description='Should be deleted in bulk.',
+            price_minor=11000,
+            status=Product.Status.DRAFT,
+        )
+        second = Product.objects.create(
+            category=self.category,
+            name='Delete Me Second',
+            slug='delete-me-second-confirm',
+            description='Also should be deleted in bulk.',
+            price_minor=12000,
+            status=Product.Status.DRAFT,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            '/admin/dashboard/confirm/',
+            {'action': 'delete-selected-products',
+                'product_ids': f'{first.id},{second.id}'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response, 'Are you sure you want to delete 2 products?')
+
+    def test_staff_products_use_confirmation_links_for_archive_and_delete(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Archive Confirm Product',
+            slug='archive-confirm-product',
+            description='Should route through confirm flow.',
+            price_minor=14000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/products/')
+
+        self.assertContains(
+            response,
+            f'/admin/dashboard/confirm/?action=archive-product&product_id={product.id}',
+        )
+        self.assertContains(
+            response,
+            f'/admin/dashboard/confirm/?action=delete-product&product_id={product.id}',
+        )
+
+        confirm_response = self.client.post('/admin/dashboard/confirm/', {
+            'action': 'delete-product',
+            'product_id': str(product.id),
+        })
+        self.assertRedirects(confirm_response, '/admin/dashboard/products/')
+
+    def test_staff_edit_form_posts_to_confirmation_route(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Edit Confirm Product',
+            slug='edit-confirm-product',
+            description='Should confirm before saving.',
+            price_minor=13000,
+            status=Product.Status.ACTIVE,
+        )
+        self.client.force_login(self.staff)
+
+        response = self.client.get(
+            f'/admin/dashboard/products/{product.id}/edit/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'action="/admin/dashboard/confirm/"')
+        self.assertContains(response, 'name="action" value="update-product"')
+
+        confirm_response = self.client.post('/admin/dashboard/confirm/', {
+            'action': 'update-product',
+            'product_id': str(product.id),
+            'product_id': str(product.id),
+            'name': 'Updated Confirm Product',
+            'slug': 'updated-confirm-product',
+            'category': str(self.category.id),
+            'description': 'Updated description.',
+            'price': '200.00',
+            'status': 'ACTIVE',
+        })
+        self.assertRedirects(confirm_response, '/admin/dashboard/products/')
+
+    def test_staff_can_adjust_variant_stock(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Linen Top',
+            slug='linen-top',
+            description='A breathable linen top for warm days.',
+            price_minor=12000,
+            status=Product.Status.ACTIVE,
+        )
+        variant = ProductVariant.objects.create(
+            product=product, sku='LINEN-S', stock_quantity=2)
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/dashboard/', {
+            'action': 'adjust-stock',
+            'variant': str(variant.id),
+            'delta': '3',
+            'reason': 'restock',
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/')
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, 5)
+
+    def test_django_admin_accepts_empty_json_fields(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post('/admin/catalog/product/add/', {
+            'category': str(self.category.id),
+            'name': 'Admin Silk Dress',
+            'slug': 'admin-silk-dress',
+            'tagline': '',
+            'description': 'A silk dress created through Django admin.',
+            'details': '',
+            'price_minor': '24500',
+            'compare_at_price_minor': '',
+            'image_url': '',
+            'images': '',
+            'status': Product.Status.ACTIVE,
+            'is_featured': '',
+            'is_new_arrival': '',
+            'is_best_seller': '',
+            '_save': 'Save',
+            'variants-TOTAL_FORMS': '0',
+            'variants-INITIAL_FORMS': '0',
+            'variants-MIN_NUM_FORMS': '0',
+            'variants-MAX_NUM_FORMS': '1000',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        product = Product.objects.get(slug='admin-silk-dress')
+        self.assertEqual(product.images, [])

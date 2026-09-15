@@ -1,0 +1,100 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ page_title }} | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li><a href="/admin/dashboard/products/">Products</a></li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">Import</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 720px; margin: 0 auto;">
+  <div class="page-header">
+    <div>
+      <h2 class="page-title">{{ page_title }}</h2>
+      <p class="page-subtitle">{{ page_subtitle }}</p>
+    </div>
+  </div>
+
+  {% if not ai_available %}
+  <div class="alert" style="background: var(--status-warning-bg); color: var(--status-warning); border: 1px solid #F0D99C; margin-bottom: 24px;">
+    <i class="ph ph-warning"></i> AI image generation is unavailable until GOOGLE_API_KEY is configured in the backend environment.
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 20px;">
+        {% csrf_token %}
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" for="id_file">CSV/XLSX file</label>
+          <input class="form-control" type="file" name="file" accept=".csv,.xlsx,.xls" required id="id_file">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" for="id_image_files">Product images</label>
+          <input class="form-control" type="file" name="image_files" multiple accept="image/*" id="id_image_files">
+          <div class="form-text">Upload images that match your product names or SKUs.</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" name="generate_ai" id="generate_ai" style="width: 16px; height: 16px; accent-color: var(--accent);">
+          <label for="generate_ai" style="font-size: 13px; font-weight: 500; color: var(--text); margin: 0;">Generate product description and image with AI from the product name</label>
+        </div>
+        <div style="display: flex; gap: 12px; padding-top: 8px;">
+          <button class="btn btn-primary" type="submit"><i class="ph ph-upload-simple"></i> Import Products</button>
+          <a class="btn btn-secondary" href="{{ download_template_url }}"><i class="ph ph-download-simple"></i> Download Template</a>
+          <a class="btn btn-secondary" href="/admin/dashboard/products/">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if result %}
+  <div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+      <h3 class="card-title">Import Results</h3>
+    </div>
+    <div class="card-body" style="padding: 16px 24px;">
+      <div style="display: flex; gap: 24px; margin-bottom: 16px;">
+        <div><span style="font-size: 12px; color: var(--text-secondary);">Total Rows</span><br><strong>{{ result.rows_total }}</strong></div>
+        <div><span style="font-size: 12px; color: var(--text-secondary);">Succeeded</span><br><strong style="color: var(--status-success);">{{ result.rows_success }}</strong></div>
+        <div><span style="font-size: 12px; color: var(--text-secondary);">Failed</span><br><strong style="color: var(--status-danger);">{{ result.rows_failed }}</strong></div>
+      </div>
+
+      {% if result.messages %}
+      <ul style="margin: 0 0 16px 0; padding-left: 20px; font-size: 13px; color: var(--text-secondary);">
+        {% for message in result.messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    {% if result.rows %}
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>SKU</th>
+            <th>Status</th>
+            <th>Errors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          <tr>
+            <td>{{ row.row_number }}</td>
+            <td style="font-family: monospace;">{{ row.sku }}</td>
+            <td><span class="status-badge status-{{ row.status|lower }}">{{ row.status }}</span></td>
+            <td style="font-size: 12px; color: var(--text-secondary);">{% if row.errors %}{{ row.errors|join:", " }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

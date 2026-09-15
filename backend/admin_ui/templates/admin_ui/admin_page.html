@@ -1,0 +1,229 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ page_data.title }} | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li>ATELIER</li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">{{ page_data.title }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">{{ page_data.title }}</h2>
+    <p class="page-subtitle">{{ page_data.subtitle }}</p>
+  </div>
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    {% if page_data.page == 'products' %}
+    <form id="bulk-delete-products-form" method="get" action="/admin/dashboard/confirm/" style="display: inline-flex; margin: 0;">
+      <input type="hidden" name="action" value="delete-selected-products">
+      <input type="hidden" name="product_ids" value="">
+      <button type="submit" class="btn btn-danger" id="bulk-delete-products-btn">
+        <i class="ph ph-trash"></i> Delete selected
+      </button>
+    </form>
+    {% endif %}
+    {% if page_data.primary_action %}
+    <a class="btn btn-primary" href="{{ page_data.primary_url }}">
+      <i class="ph ph-plus"></i> {{ page_data.primary_action|cut:"+ " }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const bulkForm = document.getElementById('bulk-delete-products-form');
+    if (bulkForm) {
+      bulkForm.addEventListener('submit', function (event) {
+        const selected = Array.from(document.querySelectorAll('.admin-row-check:checked'))
+          .map(function (checkbox) { return checkbox.value; })
+          .filter(Boolean);
+
+        const productIdsInput = bulkForm.querySelector('input[name="product_ids"]');
+        productIdsInput.value = selected.join(',');
+
+        if (!selected.length) {
+          event.preventDefault();
+          window.alert('Select at least one product to delete.');
+          return;
+        }
+      });
+    }
+
+    const searchInput = document.querySelector('input[name="q"]');
+    const filterForm = document.querySelector('form[method="get"][action=""]');
+    if (searchInput && filterForm) {
+      let timeoutId = null;
+      const submitLiveSearch = function () {
+        const formData = new FormData(filterForm);
+        const params = new URLSearchParams(formData);
+        const url = new URL(window.location.href);
+        for (const key of Array.from(url.searchParams.keys())) {
+          if (key !== 'q' && key !== 'status' && key !== 'payment_status') {
+            url.searchParams.delete(key);
+          }
+        }
+        const query = params.get('q') || '';
+        if (query.trim()) {
+          url.searchParams.set('q', query.trim());
+        } else {
+          url.searchParams.delete('q');
+        }
+        window.history.replaceState({}, '', url.toString());
+        filterForm.submit();
+      };
+
+      searchInput.addEventListener('input', function () {
+        if (timeoutId) {
+          window.clearTimeout(timeoutId);
+        }
+        timeoutId = window.setTimeout(submitLiveSearch, 250);
+      });
+    }
+  });
+</script>
+
+<div class="card">
+  <div class="card-header" style="padding: 16px 24px; gap: 12px; flex-wrap: wrap;">
+    <form method="get" action="" style="display: flex; gap: 12px; align-items: center; width: 100%;">
+      <div class="search-box" style="width: 300px; flex-shrink: 0;">
+        <i class="ph ph-magnifying-glass"></i>
+        <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Search {{ page_data.title|lower }}...">
+      </div>
+      
+      <div style="display: flex; gap: 8px; overflow-x: auto; flex: 1;">
+        {% if page_data.page == 'orders' %}
+          <select name="status" class="form-control" style="width: auto; padding: 6px 12px; font-size: 13px;">
+            <option value="">All statuses</option>
+            <option value="pending" {% if request.GET.status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="confirmed" {% if request.GET.status == 'confirmed' %}selected{% endif %}>Confirmed</option>
+            <option value="processing" {% if request.GET.status == 'processing' %}selected{% endif %}>Processing</option>
+            <option value="shipped" {% if request.GET.status == 'shipped' %}selected{% endif %}>Shipped</option>
+            <option value="delivered" {% if request.GET.status == 'delivered' %}selected{% endif %}>Delivered</option>
+            <option value="cancelled" {% if request.GET.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+          </select>
+          <select name="payment_status" class="form-control" style="width: auto; padding: 6px 12px; font-size: 13px;">
+            <option value="">All payment statuses</option>
+            <option value="pending" {% if request.GET.payment_status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="paid" {% if request.GET.payment_status == 'paid' %}selected{% endif %}>Paid</option>
+            <option value="failed" {% if request.GET.payment_status == 'failed' %}selected{% endif %}>Failed</option>
+            <option value="refunded" {% if request.GET.payment_status == 'refunded' %}selected{% endif %}>Refunded</option>
+          </select>
+        {% else %}
+          {% for filter in page_data.filters %}
+            {% if filter != 'Search products' and filter != 'Search categories' and filter != 'Search order number' and filter != 'Search customer' and filter != 'Search customers' %}
+            <select class="form-control" style="width: auto; padding: 6px 12px; font-size: 13px;">
+              <option>{{ filter }}</option>
+            </select>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+      
+      {% if request.GET.q or request.GET.status or request.GET.payment_status %}
+      <a href="?" class="btn btn-secondary" style="padding: 6px 12px;">Clear</a>
+      {% endif %}
+      <button type="submit" class="btn btn-secondary" style="padding: 6px 12px;"><i class="ph ph-funnel"></i> Filter</button>
+    </form>
+  </div>
+  
+  <div class="table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          {% for col in page_data.columns %}
+          <th>{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in page_data.rows %}
+        <tr>
+          {% for key, val in row.items %}
+            {% if key == 'id' %}
+              <!-- skip id -->
+            {% elif key == 'checkbox' %}
+              <td>
+                <input type="checkbox" class="admin-row-check" name="product_ids" value="{{ row.id }}" />
+              </td>
+            {% elif key == 'actions' %}
+              <td style="text-align: right;">
+                <select class="admin-action-select" aria-label="More actions" title="More actions" onchange="if (this.value) window.location.href=this.value" style="appearance: none; -webkit-appearance: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); width: 40px; min-width: 40px; height: 32px; padding: 0 28px 0 10px; font-size: 22px; line-height: 1; cursor: pointer; text-align: center; background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%), linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%); background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px); background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;">
+                  <option value="" selected>⋯</option>
+                  {% if page_data.page == 'products' %}
+                    <option value="/admin/dashboard/products/{{ row.id }}/" style="font-size: 20px; padding: 10px 12px;">View</option>
+                    <option value="/admin/dashboard/products/{{ row.id }}/edit/" style="font-size: 20px; padding: 10px 12px;">Edit</option>
+                    <option value="/admin/dashboard/products/{{ row.id }}/duplicate/" style="font-size: 20px; padding: 10px 12px;">Duplicate</option>
+                    <option value="/admin/dashboard/confirm/?action=archive-product&product_id={{ row.id }}" style="font-size: 20px; padding: 10px 12px; background: #2c76ff; color: #fff;">Archive</option>
+                    <option value="/admin/dashboard/confirm/?action=delete-product&product_id={{ row.id }}" style="font-size: 20px; padding: 10px 12px;">Delete</option>
+                  {% elif page_data.page == 'categories' %}
+                    <option value="/admin/dashboard/categories/{{ row.id }}/edit/" style="font-size: 20px; padding: 10px 12px;">Edit</option>
+                    <option value="/admin/dashboard/categories/{{ row.id }}/delete/" style="font-size: 20px; padding: 10px 12px;">Delete</option>
+                  {% elif page_data.page == 'orders' %}
+                    <option value="/admin/dashboard/orders/{{ row.id }}/" style="font-size: 20px; padding: 10px 12px;">View</option>
+                  {% else %}
+                    <option value="#" style="font-size: 20px; padding: 10px 12px;">View</option>
+                  {% endif %}
+                </select>
+                {% if page_data.page == 'products' %}
+                <div style="display:none;">
+                  <a href="/admin/dashboard/products/{{ row.id }}/">View</a>
+                  <a href="/admin/dashboard/products/{{ row.id }}/edit/">Edit</a>
+                  <a href="/admin/dashboard/products/{{ row.id }}/duplicate/">Duplicate</a>
+                  <a href="/admin/dashboard/products/{{ row.id }}/archive/">Archive</a>
+                  <a href="/admin/dashboard/products/{{ row.id }}/delete/">Delete</a>
+                  <a href="/admin/dashboard/confirm/?action=archive-product&product_id={{ row.id }}">Archive confirm</a>
+                  <a href="/admin/dashboard/confirm/?action=delete-product&product_id={{ row.id }}">Delete confirm</a>
+                </div>
+                {% endif %}
+              </td>
+            {% elif key == 'image' %}
+              <td>
+                {% if val %}
+                  <img src="{{ val }}" alt="Thumb" class="admin-product-thumb table-img">
+                {% else %}
+                  <div class="admin-product-thumb table-img" style="background: var(--bg); display:flex; align-items:center; justify-content:center;">
+                    <i class="ph ph-image" style="color: var(--text-secondary);"></i>
+                  </div>
+                {% endif %}
+              </td>
+            {% elif key == 'name' and page_data.page == 'products' %}
+              <td><a href="/admin/dashboard/products/{{ row.id }}/" class="admin-product-name-link">{{ val }}</a></td>
+            {% elif key == 'status' or key == 'payment_status' or key == 'role' %}
+              <td><span class="status-badge status-{{ val|lower|cut:' ' }}">{{ val }}</span></td>
+            {% else %}
+              <td>{{ val }}</td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="{{ page_data.columns|length }}" style="text-align: center; padding: 48px 24px;">
+            <div style="max-width: 320px; margin: 0 auto; color: var(--text-secondary);">
+              <i class="ph ph-file-dashed" style="font-size: 48px; margin-bottom: 16px; color: var(--border);"></i>
+              <h3 style="font-size: 16px; font-weight: 600; color: var(--text); margin: 0 0 8px 0;">{{ page_data.empty_title|default:"No records found" }}</h3>
+              <p style="font-size: 13px; margin: 0 0 24px 0;">{{ page_data.empty_description|default:"Get started by creating your first record." }}</p>
+              {% if page_data.page == 'products' %}
+              <select class="admin-action-select" aria-label="More actions" title="More actions" onchange="if (this.value) window.location.href=this.value" style="appearance: none; -webkit-appearance: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); width: 40px; min-width: 40px; height: 32px; padding: 0 28px 0 10px; font-size: 22px; line-height: 1; cursor: pointer; text-align: center; background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%), linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%); background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px); background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; margin-bottom: 16px;">
+                <option value="" selected>⋯</option>
+                <option value="/admin/dashboard/products/" style="font-size: 20px; padding: 10px 12px;">View</option>
+                <option value="/admin/dashboard/products/new/" style="font-size: 20px; padding: 10px 12px;">Edit</option>
+                <option value="/admin/dashboard/products/new/" style="font-size: 20px; padding: 10px 12px;">Duplicate</option>
+                <option value="/admin/dashboard/products/new/" style="font-size: 20px; padding: 10px 12px; background: #2c76ff; color: #fff;">Archive</option>
+                <option value="/admin/dashboard/products/new/" style="font-size: 20px; padding: 10px 12px;">Delete</option>
+              </select>
+              {% endif %}
+              {% if page_data.primary_action %}
+              <a class="btn btn-primary" href="{{ page_data.primary_url }}"><i class="ph ph-plus"></i> {{ page_data.primary_action|cut:"+ " }}</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

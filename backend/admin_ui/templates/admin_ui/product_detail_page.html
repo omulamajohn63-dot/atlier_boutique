@@ -1,0 +1,148 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ product.name }} | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li><a href="/admin/dashboard/products/">Products</a></li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">{{ product.name|truncatewords:4 }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+  }
+  .product-image {
+    width: 100%;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+  .placeholder-image {
+    width: 100%;
+    aspect-ratio: 1;
+    background: var(--bg);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 13px;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { color: var(--text-secondary); }
+  .detail-value { font-weight: 500; }
+  @media (max-width: 768px) {
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">{{ product.name }}</h2>
+    <p class="page-subtitle">{{ product.get_status_display }} &middot; {{ product.category.name }}</p>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <a class="btn btn-primary" href="/admin/dashboard/products/{{ product.id }}/edit/"><i class="ph ph-pencil-simple"></i> Edit</a>
+    <a class="btn btn-secondary" href="/admin/dashboard/products/">Back</a>
+    <a class="btn btn-danger" href="/admin/dashboard/products/{{ product.id }}/delete/"><i class="ph ph-trash"></i> Delete</a>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div>
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-header">
+        <h3 class="card-title">Product Details</h3>
+      </div>
+      <div class="card-body" style="padding: 0 24px;">
+        <div class="detail-row">
+          <span class="detail-label">Category</span>
+          <span class="detail-value">{{ product.category.name }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Status</span>
+          <span class="status-badge status-{{ product.status|lower }}">{{ product.get_status_display }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Price</span>
+          <span class="detail-value">KES {{ product.price_display }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Slug</span>
+          <span class="detail-value" style="font-family: monospace; font-size: 12px; color: var(--text-secondary);">{{ product.slug }}</span>
+        </div>
+      </div>
+    </div>
+
+    {% if product.description %}
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-header">
+        <h3 class="card-title">Description</h3>
+      </div>
+      <div class="card-body">
+        <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 0;">{{ product.description }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if primary_variant %}
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Quick Restock</h3>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/dashboard/inventory/adjust/" style="display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;">
+          {% csrf_token %}
+          <input type="hidden" name="variant" value="{{ primary_variant.id }}">
+          <input type="hidden" name="reason" value="restock">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="restock-quantity">Quantity</label>
+            <input id="restock-quantity" name="delta" type="number" min="1" value="10" class="form-control" style="width: 120px;">
+          </div>
+          <button type="submit" class="btn btn-primary"><i class="ph ph-plus"></i> Add Stock</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Image</h3>
+      </div>
+      <div class="card-body">
+        {% if product.images %}
+          {% with first_image=product.images|first %}
+            {% if first_image %}
+              <img class="product-image" src="{{ first_image }}" alt="{{ product.name }}">
+            {% else %}
+              <div class="placeholder-image">
+                <i class="ph ph-image" style="font-size: 32px;"></i>
+              </div>
+            {% endif %}
+          {% endwith %}
+        {% else %}
+          <div class="placeholder-image">
+            <i class="ph ph-image" style="font-size: 32px;"></i>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

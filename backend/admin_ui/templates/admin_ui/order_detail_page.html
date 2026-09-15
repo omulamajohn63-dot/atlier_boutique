@@ -1,0 +1,104 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ page_title }} | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li>ATELIER</li>
+<li><i class="ph ph-caret-right"></i></li>
+<li><a href="/admin/dashboard/orders/">Orders</a></li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">{{ order.order_number }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom: 24px;">
+  <div>
+    <h2 class="page-title">{{ order.order_number }}</h2>
+    <p class="page-subtitle">{{ page_subtitle }}</p>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <span class="status-badge status-{{ order.status|lower|cut:' ' }}">{{ order.get_status_display }}</span>
+    <span class="status-badge status-{{ order.payment_status|lower|cut:' ' }}">{{ order.get_payment_status_display }}</span>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1.5fr 1fr; gap: 24px;">
+  <div class="card">
+    <div class="card-header" style="padding: 20px 24px;">
+      <h3 style="margin: 0; font-size: 18px;">Order items</h3>
+    </div>
+    <div style="padding: 0 24px 24px;">
+      {% for item in items %}
+      <div style="display:flex; gap:16px; align-items:center; padding: 16px 0; border-bottom:1px solid var(--border-light);">
+        {% if item.image_url %}
+        <img src="{{ item.image_url }}" alt="{{ item.product_name }}" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid var(--border);" />
+        {% else %}
+        <div style="width:64px;height:64px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text-secondary);">
+          <i class="ph ph-image"></i>
+        </div>
+        {% endif %}
+        <div style="flex:1;">
+          <div style="font-weight:600; margin-bottom:4px;">{{ item.product_name }}</div>
+          <div style="color:var(--text-secondary); font-size:13px;">
+            {% if item.variant_size %}Size: {{ item.variant_size }}{% endif %}
+            {% if item.variant_color %}{% if item.variant_size %} · {% endif %}Color: {{ item.variant_color }}{% endif %}
+            {% if item.variant_sku %}{% if item.variant_size or item.variant_color %} · {% endif %}SKU: {{ item.variant_sku }}{% endif %}
+          </div>
+        </div>
+        <div style="text-align:right; min-width:110px;">
+          <div style="font-weight:600;">Qty: {{ item.quantity }}</div>
+          <div style="color:var(--text-secondary); font-size:13px;">KES {{ item.line_total_display|floatformat:2 }}</div>
+        </div>
+      </div>
+      {% empty %}
+      <div style="padding: 30px 0 10px; color: var(--text-secondary); text-align:center;">No items found for this order.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header" style="padding: 20px 24px;">
+      <h3 style="margin: 0; font-size: 18px;">Customer & payment</h3>
+    </div>
+    <div style="padding: 0 24px 24px;">
+      <div style="padding:16px 0; border-bottom:1px solid var(--border-light);">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Customer</div>
+        <div style="font-weight:600;">{{ customer_name }}</div>
+        <div style="color:var(--text-secondary);">{{ customer_email }}</div>
+      </div>
+
+      <div style="padding:16px 0; border-bottom:1px solid var(--border-light);">
+        <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-secondary); margin-bottom:8px;">Delivery</div>
+        <div>{{ order.shipping_method|title }} shipping</div>
+        <div style="color:var(--text-secondary); margin-top:4px;">{{ order.notes|default:"No delivery notes provided." }}</div>
+      </div>
+
+      <div style="padding:16px 0;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:var(--text-secondary);">
+          <span>Subtotal</span>
+          <strong style="color:var(--text);">KES {{ subtotal|floatformat:2 }}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:var(--text-secondary);">
+          <span>Shipping</span>
+          <strong style="color:var(--text);">KES {{ shipping_total|floatformat:2 }}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding-top:12px; border-top:1px solid var(--border-light); font-size:18px; font-weight:700;">
+          <span>Total</span>
+          <span>KES {{ total|floatformat:2 }}</span>
+        </div>
+      </div>
+
+      {% if can_approve %}
+      <form method="post" action="/admin/dashboard/orders/{{ order.id }}/approve/" style="margin-top: 18px;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" style="width:100%;">
+          <i class="ph ph-check-circle"></i> Approve & confirm order
+        </button>
+      </form>
+      {% elif order.status == 'confirmed' %}
+      <div class="alert alert-success" role="alert" style="margin-top:18px;">This order has already been approved and confirmed.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

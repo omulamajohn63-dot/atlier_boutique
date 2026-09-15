@@ -1,0 +1,271 @@
+{% extends "admin_ui/base_admin.html" %}
+{% block title %}Overview | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li>ATELIER</li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">Overview</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+    align-items: stretch;
+  }
+  .metric-card {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .metric-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .metric-value {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  .metric-trend {
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .trend-up { color: var(--status-success); }
+  .trend-down { color: var(--status-danger); }
+  
+  .data-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .chart-card {
+    min-height: 300px;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .chart-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+  }
+  .chart-bars {
+    min-width: 520px;
+    height: 200px;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 24px 24px 12px;
+  }
+  .bar {
+    flex: 1 0 36px;
+    background: linear-gradient(180deg, #4A5D4E 0%, #70886E 100%);
+    border-radius: 8px 8px 0 0;
+    min-height: 12px;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.06);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  .bar:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+  }
+  .bar.alt {
+    background: linear-gradient(180deg, #B39A73 0%, #D7C29B 100%);
+  }
+  .bar.alt:hover {
+    opacity: 0.95;
+  }
+  .chart-labels {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 24px 24px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2 class="page-title">Overview</h2>
+    <p class="page-subtitle">Good morning. Store performance and activity overview.</p>
+  </div>
+  <a class="btn btn-primary" href="/admin/dashboard/products/new/"><i class="ph ph-plus"></i> Add Product</a>
+</div>
+
+<div class="metric-grid">
+  <div class="card metric-card">
+    <div class="metric-label">Total Revenue</div>
+    <div class="metric-value">KES {{ total_revenue_kes|floatformat:0 }}</div>
+    <div class="metric-trend trend-up"><i class="ph ph-trend-up"></i> +12.5%</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Pending Revenue</div>
+    <div class="metric-value">KES {{ pending_revenue_kes|floatformat:0 }}</div>
+    <div class="metric-trend trend-neutral"><i class="ph ph-clock"></i> Awaiting approval</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Total Orders</div>
+    <div class="metric-value">{{ total_orders }}</div>
+    <div class="metric-trend trend-up"><i class="ph ph-trend-up"></i> +8.2%</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Customers</div>
+    <div class="metric-value">{{ total_customers }}</div>
+    <div class="metric-trend trend-up"><i class="ph ph-trend-up"></i> +15.4%</div>
+  </div>
+  <div class="card metric-card">
+    <div class="metric-label">Low Stock</div>
+    <div class="metric-value">{{ low_stock_count }}</div>
+    <div class="metric-trend trend-down"><i class="ph ph-warning-circle"></i> Needs attention</div>
+  </div>
+</div>
+
+<div class="data-grid">
+  <div class="card chart-card">
+    <div class="chart-header">
+      <h3 class="card-title">Sales Overview</h3>
+      <form method="get" style="margin: 0;">
+        <select name="range" class="form-control" onchange="this.form.submit()" style="width: auto; padding: 4px 8px; font-size: 12px;">
+          <option value="7" {% if sales_range == 7 %}selected{% endif %}>7 Days</option>
+          <option value="30" {% if sales_range == 30 %}selected{% endif %}>1 Month</option>
+          <option value="90" {% if sales_range == 90 %}selected{% endif %}>3 Months</option>
+        </select>
+      </form>
+    </div>
+    <div class="chart-scroll">
+      <div class="chart-bars">
+        {% for point in sales_overview %}
+        <div class="bar{% if forloop.counter|divisibleby:2 %} alt{% endif %} sales-chart-bar" style="height: {{ point.height }}%;" data-value="{{ point.value|floatformat:2 }}" title="{{ point.day }}: KES {{ point.value|floatformat:2 }}"></div>
+        {% empty %}
+        <div class="bar" style="height: 20%"></div>
+        <div class="bar alt" style="height: 30%"></div>
+        <div class="bar" style="height: 25%"></div>
+        <div class="bar alt" style="height: 35%"></div>
+        <div class="bar" style="height: 40%"></div>
+        <div class="bar alt" style="height: 25%"></div>
+        <div class="bar" style="height: 15%"></div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="chart-labels">
+      {% for point in sales_overview %}
+      <span>{{ point.label }}</span>
+      {% empty %}
+      <span>Mon</span>
+      <span>Tue</span>
+      <span>Wed</span>
+      <span>Thu</span>
+      <span>Fri</span>
+      <span>Sat</span>
+      <span>Sun</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Recent Orders</h3>
+      <a class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" href="/admin/dashboard/orders/">View All</a>
+    </div>
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Total</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in orders|slice:":5" %}
+          <tr>
+            <td style="font-weight: 500;">#{{ order.order_number }}</td>
+            <td>{% firstof order.customer.full_name order.customer.email 'Guest' %}</td>
+            <td>{{ order.total_display }}</td>
+            <td><span class="status-badge status-{{ order.status|lower }}">{{ order.get_status_display }}</span></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" style="text-align: center; color: var(--text-secondary);">No orders yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="data-grid">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Low Stock Alerts</h3>
+      <a class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" href="/admin/dashboard/inventory/adjust/">Manage Inventory</a>
+    </div>
+    <div class="table-container">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>SKU</th>
+            <th>Stock</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for variant in low_stock_products %}
+          <tr>
+            <td>{{ variant.product.name }}</td>
+            <td style="font-family: monospace; color: var(--text-secondary);">{{ variant.sku }}</td>
+            <td><span class="status-badge status-warning">{{ variant.stock_quantity }}</span></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" style="text-align: center; color: var(--text-secondary);">All products well stocked.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Activity</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+      <table class="table">
+        <tbody>
+          {% for item in recent_activity %}
+          <tr>
+            <td style="width: 40px; text-align: center; color: var(--text-secondary);">{{ item.icon }}</td>
+            <td>
+              <div style="font-weight: 500; font-size: 13px;">{{ item.title }}</div>
+              <div style="color: var(--text-secondary); font-size: 12px;">{{ item.description }}</div>
+            </td>
+            <td style="text-align: right; color: var(--text-secondary); font-size: 12px;">{{ item.timestamp }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 24px;">No recent activity.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "admin_ui/base_admin.html" %}
+
+{% block title %}{{ page_title }} | ATELIER Admin{% endblock %}
+
+{% block breadcrumbs %}
+<li><a href="/admin/dashboard/categories/">Categories</a></li>
+<li><i class="ph ph-caret-right"></i></li>
+<li class="active">{{ page_title }}</li>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 640px; margin: 0 auto;">
+  <div class="page-header">
+    <div>
+      <h2 class="page-title">{{ page_title }}</h2>
+      <p class="page-subtitle">{{ page_subtitle }}</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <form method="post" style="display: flex; flex-direction: column; gap: 20px;">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div style="display: flex; gap: 12px; padding-top: 8px;">
+          <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+          <a class="btn btn-secondary" href="/admin/dashboard/categories/">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

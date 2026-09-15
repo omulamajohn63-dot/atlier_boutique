@@ -1,0 +1,6 @@
+{
+  "name": "Boutique Fashion Store",
+  "description": "A modern boutique e-commerce website for curated fashion apparel and accessories.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
