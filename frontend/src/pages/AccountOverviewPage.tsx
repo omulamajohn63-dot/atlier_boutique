@@ -1,129 +1,244 @@
 import React from 'react';
-import { Package, Heart, Eye, UserRound, Bell } from 'lucide-react';
+import { ArrowRight, Bell, CheckCheck, Heart, Package, PackageX } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { useOrders } from '../context/OrdersContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useNotifications } from '../context/NotificationsContext';
 import { useRouter } from '../router/RouterContext';
+import { OrderStatusPill } from '../components/orders/OrderStatusPill';
+import { OrderItemThumb } from '../components/orders/OrderItemThumb';
+import { AccountPageHeader } from '../components/account/AccountPageHeader';
 import { formatPrice } from '../utils/currency';
+import { formatOrderDate } from '../utils/orderMapper';
+import { isActiveOrder } from '../utils/orderStatus';
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
+
+interface StatCardProps {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  href: string;
+  hint?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ label, value, icon, href, hint }) => {
+  const { navigate } = useRouter();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(href)}
+      className="group rounded-2xl border border-[#E8E5DF] bg-white p-5 text-left shadow-xs transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D8D3CB] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C]"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#827E77]">{label}</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FAF9F6] ring-1 ring-[#E8E5DF]">
+          <span className="text-[#8A745C]">{icon}</span>
+        </span>
+      </div>
+      <div className="mt-3 font-serif text-3xl leading-none text-[#181716]">
+        {String(value).padStart(2, '0')}
+      </div>
+      <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8A745C] transition-colors group-hover:text-[#181716]">
+        {hint ?? 'View'}
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+      </div>
+    </button>
+  );
+};
 
 export const AccountOverviewPage: React.FC = () => {
   const { navigate } = useRouter();
+  const { user } = useAuth();
   const { orders } = useOrders();
   const { wishlistCount } = useWishlist();
   const { notifications, unreadCount, markAsRead } = useNotifications();
-  const activeOrders = orders.filter((order) =>
-    ['pending', 'confirmed', 'processing', 'shipped'].includes(order.status)
-  ).length;
-  const recentOrders = orders.slice(0, 3);
+
+  const firstName = (user?.user_metadata?.full_name || '').split(' ')[0];
+  const recentOrders = [...orders]
+    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    .slice(0, 3);
+  const recentNotifications = notifications.slice(0, 3);
+  const activeOrders = orders.filter((order) => isActiveOrder(order.status)).length;
+  const receivedOrders = orders.filter((order) => order.status === 'received').length;
+  const cancelledOrders = orders.filter((order) => order.status === 'cancelled').length;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
-      <section className="space-y-6">
-        <div className="space-y-2">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#827E77]">Good Morning</div>
-          <h1 className="font-serif text-4xl leading-tight text-[#181716]">Atelier Dashboard</h1>
-          <p className="text-sm text-[#63605A]">Manage your Atelier experience</p>
+    <section className="w-full space-y-9">
+      <AccountPageHeader
+        eyebrow={greeting()}
+        title={firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
+        description="A glance at your Atelier — orders, wishlist and the latest from your boutique."
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          label="Active Orders"
+          value={activeOrders}
+          icon={<Package className="h-4 w-4" />}
+          href="/account/orders"
+          hint="View orders"
+        />
+        <StatCard
+          label="Received"
+          value={receivedOrders}
+          icon={<CheckCheck className="h-4 w-4" />}
+          href="/account/orders"
+          hint="View orders"
+        />
+        <StatCard
+          label="Cancelled"
+          value={cancelledOrders}
+          icon={<PackageX className="h-4 w-4" />}
+          href="/account/orders"
+          hint="View orders"
+        />
+        <StatCard
+          label="Wishlist"
+          value={wishlistCount}
+          icon={<Heart className="h-4 w-4" />}
+          href="/wishlist"
+          hint="Browse list"
+        />
+        <StatCard
+          label="Notifications"
+          value={unreadCount}
+          icon={<Bell className="h-4 w-4" />}
+          href="/account/notifications"
+          hint={unreadCount > 0 ? `${unreadCount} unread` : 'No unread'}
+        />
+      </div>
+
+      <section className="rounded-2xl border border-[#E8E5DF] bg-white shadow-xs">
+        <div className="flex items-center justify-between gap-4 border-b border-[#F3F1ED] px-6 py-5">
+          <div>
+            <h2 className="font-serif text-2xl tracking-tight text-[#181716]">Recent Orders</h2>
+            <p className="mt-0.5 text-xs text-[#63605A]">Your latest pieces, at a glance.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/account/orders')}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-sm text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A745C] transition-colors hover:text-[#181716] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C]"
+          >
+            View all <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         </div>
 
-        <section className="grid gap-4 sm:grid-cols-2">
-          <article className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] p-6">
-            <div className="flex items-center justify-between">
-              <span className="font-serif text-xl text-[#181716]">ACTIVE ORDERS</span>
-              <Package className="h-5 w-5 text-[#8A745C]" />
-            </div>
-            <div className="mt-4 text-5xl font-serif leading-none text-[#181716]">{String(activeOrders).padStart(2, '0')}</div>
-          </article>
-          <article className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] p-6">
-            <div className="flex items-center justify-between">
-              <span className="font-serif text-xl text-[#181716]">WISHLIST</span>
-              <Heart className="h-5 w-5 text-[#8A745C]" />
-            </div>
-            <div className="mt-4 text-5xl font-serif leading-none text-[#181716]">{String(wishlistCount).padStart(2, '0')}</div>
-          </article>
-        </section>
-
-        <section className="rounded-[1.75rem] border border-[#E8E5DF] bg-[#FAF9F6] p-6">
-          <div className="flex items-center justify-between">
-            <div className="font-serif text-2xl text-[#181716]">NOTIFICATIONS</div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-[#8A745C]">
-                <Bell className="h-4 w-4" />
-                <span className="text-[11px] font-semibold uppercase tracking-[0.12em]">{unreadCount} unread</span>
-              </div>
-              <button type="button" onClick={() => navigate('/account/notifications')} className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8A745C] hover:text-[#181716]">View all</button>
-            </div>
+        {recentOrders.length === 0 ? (
+          <div className="px-6 py-14 text-center">
+            <p className="font-serif text-lg text-[#181716]">No orders yet</p>
+            <p className="mx-auto mt-1.5 max-w-xs text-sm text-[#63605A]">
+              Your next favorite piece is waiting for you.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/shop')}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-[#181716] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#FAF9F6] transition-colors hover:bg-[#8A745C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C]"
+            >
+              Start Shopping
+            </button>
           </div>
-          <div className="mt-5 space-y-3">
-            {notifications.length === 0 ? (
-              <p className="text-sm text-[#63605A]">No notifications yet.</p>
-            ) : (
-              notifications.slice(0, 4).map((notification) => (
+        ) : (
+          <ul className="divide-y divide-[#F3F1ED]">
+            {recentOrders.map((order) => {
+              const thumb = order.items[0];
+              return (
+                <li key={order.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/account/orders/${encodeURIComponent(order.orderNumber)}`)}
+                    className="group flex w-full items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-[#FAF9F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8A745C] sm:gap-5"
+                  >
+                    {thumb && (
+                      <OrderItemThumb item={thumb} className="h-16 w-14 shrink-0 rounded-lg border border-[#E8E5DF] shadow-xs sm:h-20 sm:w-[4.5rem]" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-mono text-sm font-semibold text-[#181716]">
+                        {order.orderNumber}
+                      </div>
+                      <div className="mt-0.5 text-xs text-[#827E77]">
+                        Placed {formatOrderDate(order.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }) || '—'}
+                      </div>
+                    </div>
+                    <OrderStatusPill status={order.status} className="hidden sm:inline-flex" />
+                    <span className="shrink-0 font-serif text-base text-[#181716]">
+                      {formatPrice(order.total)}
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-[#A29E96] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-[#E8E5DF] bg-white shadow-xs">
+        <div className="flex items-center justify-between gap-4 border-b border-[#F3F1ED] px-6 py-5">
+          <div>
+            <h2 className="font-serif text-2xl tracking-tight text-[#181716]">Latest Notifications</h2>
+            <p className="mt-0.5 text-xs text-[#63605A]">Order and account updates from the atelier.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/account/notifications')}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-sm text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A745C] transition-colors hover:text-[#181716] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C]"
+          >
+            View all <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+
+        {recentNotifications.length === 0 ? (
+          <div className="px-6 py-14 text-center">
+            <Bell className="mx-auto h-8 w-8 text-[#C7BDAB]" strokeWidth={1.5} aria-hidden="true" />
+            <p className="mt-3 font-serif text-lg text-[#181716]">You're all caught up</p>
+            <p className="mx-auto mt-1.5 max-w-xs text-sm text-[#63605A]">
+              We'll let you know here the moment something happens.
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-[#F3F1ED]">
+            {recentNotifications.map((notification) => (
+              <li key={notification.id}>
                 <button
                   type="button"
-                  key={notification.id}
-                  onClick={() => void markAsRead(notification.id)}
-                  className={`w-full rounded-2xl border p-4 text-left transition ${notification.isRead ? 'border-[#E8E5DF] bg-white' : 'border-[#D8C7A6] bg-[#FFFDF8]'}`}
+                  onClick={() => {
+                    if (!notification.isRead) void markAsRead(notification.id);
+                    if (notification.link) navigate(notification.link);
+                  }}
+                  className={`flex w-full items-start gap-3 px-6 py-4 text-left transition-colors hover:bg-[#FAF9F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8A745C] ${
+                    notification.isRead ? 'bg-white' : 'bg-[#FFFDF8]'
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.14em] text-[#827E77]">{notification.category}</div>
-                      <div className="mt-1 font-medium text-[#181716]">{notification.title}</div>
-                    </div>
-                    {!notification.isRead && <span className="h-2.5 w-2.5 rounded-full bg-[#8A745C]" />}
+                  <span
+                    className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                      notification.isRead ? 'bg-[#E8E5DF]' : 'bg-[#8A745C]'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#827E77]">
+                      {notification.category}
+                    </p>
+                    <p className="mt-0.5 font-medium text-[#181716]">{notification.title}</p>
+                    <p className="mt-1 line-clamp-2 text-sm text-[#63605A]">{notification.message}</p>
                   </div>
-                  <p className="mt-2 text-sm text-[#63605A]">{notification.message}</p>
+                  <span className="shrink-0 text-[11px] text-[#A29E96]">
+                    {notification.createdAt
+                      ? formatOrderDate(notification.createdAt, { day: 'numeric', month: 'short' })
+                      : ''}
+                  </span>
                 </button>
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-[1.75rem] border border-[#E8E5DF] bg-[#FAF9F6] p-6">
-          <div className="flex items-center justify-between">
-            <div className="font-serif text-2xl text-[#181716]">RECENT ORDERS</div>
-            <button type="button" onClick={() => navigate('/orders')} className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8A745C] hover:text-[#181716]">View all</button>
-          </div>
-          <div className="mt-5 space-y-4">
-            {recentOrders.length === 0 ? (
-              <p className="text-sm text-[#63605A]">No orders yet.</p>
-            ) : (
-              recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between border-b border-[#E8E5DF] pb-4 last:border-b-0 last:pb-0">
-                  <div>
-                    <div className="font-serif text-sm text-[#181716]">#{order.orderNumber}</div>
-                    <div className="text-[11px] uppercase tracking-[0.12em] text-[#827E77] mt-1">{order.status}</div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-serif text-sm text-[#181716]">{formatPrice(order.total)}</span>
-                    <button type="button" onClick={() => navigate(`/track?order=${encodeURIComponent(order.orderNumber)}`)} className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8A745C] hover:text-[#181716]">View →</button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-[1.75rem] border border-[#E8E5DF] bg-white p-6">
-          <div className="flex items-center justify-between">
-            <div className="font-serif text-2xl text-[#181716]">Storefront at a glance</div>
-            <Eye className="h-5 w-5 text-[#8A745C]" />
-          </div>
-          <div className="mt-4 grid sm:grid-cols-3 gap-4">
-            <div className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] px-4 py-5">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[#827E77]">Status</div>
-              <div className="font-serif text-xl text-[#181716] mt-2">In Season</div>
-            </div>
-            <div className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] px-4 py-5">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[#827E77]">Wishlist</div>
-              <div className="font-serif text-xl text-[#181716] mt-2">{wishlistCount}</div>
-            </div>
-            <div className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] px-4 py-5">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-[#827E77]">Orders</div>
-              <div className="font-serif text-xl text-[#181716] mt-2">{orders.length}</div>
-            </div>
-          </div>
-        </section>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-    </div>
+    </section>
   );
 };

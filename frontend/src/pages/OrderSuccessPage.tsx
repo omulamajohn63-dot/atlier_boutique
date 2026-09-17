@@ -75,7 +75,7 @@ export const OrderSuccessPage: React.FC<OrderSuccessPageProps> = ({ orderNumber 
   }, [orderNumber, order, getOrder]);
 
   const resolvedOrder = order;
-  const refCode = resolvedOrder ? resolvedOrder.orderNumber : (orderNumber || 'ATL-KES-849201');
+  const refCode = resolvedOrder ? resolvedOrder.orderNumber : (orderNumber || '');
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 text-center space-y-8">
@@ -180,7 +180,7 @@ export const OrderSuccessPage: React.FC<OrderSuccessPageProps> = ({ orderNumber 
         <Button
           variant="primary"
           size="lg"
-          onClick={() => navigate('/track')}
+          onClick={() => navigate(`/track?order=${encodeURIComponent(refCode)}`)}
           className="gap-2 uppercase tracking-wider text-xs"
         >
           <Eye className="w-4 h-4" />

@@ -16,6 +16,7 @@ const configSchema = z.object({
   MPESA_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
   PAYMENT_WEBHOOK_SECRET: z.string().min(16).default('atelier_webhook_secret_2026'),
   SESSION_SECRET: z.string().min(16).default('atelier_session_secret_2026'),
+  ADMIN_API_TOKEN: z.string().min(16).optional(),
 });
 
 const parsedConfig = configSchema.safeParse(process.env);
@@ -27,7 +28,29 @@ if (!parsedConfig.success) {
   throw new Error(`Invalid environment configuration: ${issues}`);
 }
 
-export const config = parsedConfig.data;
+const config = parsedConfig.data;
+
+if (config.NODE_ENV === 'production') {
+  const devDefaults: Array<[string, string]> = [
+    ['SESSION_SECRET', 'atelier_session_secret_2026'],
+    ['PAYMENT_WEBHOOK_SECRET', 'atelier_webhook_secret_2026'],
+    ['MPESA_CALLBACK_SECRET', 'atelier_mpesa_callback_2026'],
+  ];
+  for (const [key, value] of devDefaults) {
+    if ((config as Record<string, string>)[key] === value) {
+      throw new Error(
+        `Invalid environment configuration: ${key} must be set to a strong, unique value in production.`
+      );
+    }
+  }
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      'Invalid environment configuration: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in production.'
+    );
+  }
+}
+
+export { config };
 
 export const isSupabaseConfigured = Boolean(
   config.SUPABASE_URL && config.SUPABASE_SERVICE_ROLE_KEY

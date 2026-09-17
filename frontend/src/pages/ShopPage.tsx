@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/ProductCard';
 import { CategorySlug, Product } from '../types';
+import { ShopOccasion } from '../router/RouterContext';
 import { useRouter } from '../router/RouterContext';
 import { Search, SlidersHorizontal, ArrowUpDown, X, Package, Filter } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -10,17 +11,41 @@ import { motion } from 'motion/react';
 export interface ShopPageProps {
   initialCategory?: CategorySlug;
   initialCollection?: 'best-sellers' | 'new-arrivals';
+  initialOccasion?: ShopOccasion;
+  initialQuery?: string;
+  initialSale?: boolean;
   onQuickView: (product: Product) => void;
 }
 
 type SortOption = 'featured' | 'price-asc' | 'price-desc' | 'newest';
 
-export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', initialCollection, onQuickView }) => {
+const OCCASION_CATEGORIES: Record<ShopOccasion, CategorySlug[]> = {
+  everyday: ['women', 'men', 'tops', 'bottoms', 'shoes'],
+  evening: ['dresses', 'outerwear'],
+  'special-occasions': ['dresses', 'accessories', 'outerwear'],
+};
+
+const OCCASION_TITLES: Record<ShopOccasion, string> = {
+  everyday: 'The Everyday Edit',
+  evening: 'Evening & Occasion',
+  'special-occasions': 'Special Occasions',
+};
+
+export const ShopPage: React.FC<ShopPageProps> = ({
+  initialCategory = 'all',
+  initialCollection,
+  initialOccasion,
+  initialQuery,
+  initialSale,
+  onQuickView,
+}) => {
   const { navigate } = useRouter();
   const { products, categories: storeCategories } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<CategorySlug>(initialCategory);
   const [selectedCollection, setSelectedCollection] = useState(initialCollection);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedOccasion, setSelectedOccasion] = useState<ShopOccasion | undefined>(initialOccasion);
+  const [selectedSale, setSelectedSale] = useState<boolean>(Boolean(initialSale));
+  const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('featured');
   const [itemsToShow, setItemsToShow] = useState(6);
@@ -29,11 +54,13 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
   useEffect(() => {
     setSelectedCategory(initialCategory);
     setSelectedCollection(initialCollection);
-    setSearchQuery('');
+    setSelectedOccasion(initialOccasion);
+    setSelectedSale(Boolean(initialSale));
+    setSearchQuery(initialQuery || '');
     setOnlyInStock(false);
     setSortBy('featured');
     setItemsToShow(6);
-  }, [initialCategory, initialCollection]);
+  }, [initialCategory, initialCollection, initialOccasion, initialQuery, initialSale]);
 
   // Filter in-stock items if checked
   const filteredProducts = useMemo(() => {
@@ -44,11 +71,15 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
         : selectedCollection === 'new-arrivals'
           ? product.isNewArrival
           : true;
+      const matchesOccasion = !selectedOccasion
+        ? true
+        : OCCASION_CATEGORIES[selectedOccasion].includes(product.categorySlug);
+      const matchesSale = !selectedSale || product.compareAtPrice !== undefined;
       const search = searchQuery.trim().toLowerCase();
       const matchesSearch = !search || [product.name, product.tagline, product.description]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(search));
-      return matchesCategory && matchesCollection && matchesSearch;
+      return matchesCategory && matchesCollection && matchesOccasion && matchesSale && matchesSearch;
     });
 
     list = [...list].sort((a, b) => {
@@ -65,17 +96,36 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
       });
     }
     return list;
-  }, [products, selectedCategory, selectedCollection, searchQuery, sortBy, onlyInStock]);
+  }, [products, selectedCategory, selectedCollection, selectedOccasion, selectedSale, searchQuery, sortBy, onlyInStock]);
 
-  const isAllProductsView = selectedCategory === 'all' && !selectedCollection && !searchQuery && !onlyInStock;
+  const isAllProductsView = selectedCategory === 'all' && !selectedCollection && !selectedOccasion && !selectedSale && !searchQuery && !onlyInStock;
   const displayedProducts = isAllProductsView ? filteredProducts : filteredProducts.slice(0, itemsToShow);
   const hasMore = !isAllProductsView && itemsToShow < filteredProducts.length;
+
+  const headerTitle = selectedSale
+    ? 'The Sale Edit'
+    : selectedOccasion
+      ? OCCASION_TITLES[selectedOccasion]
+      : selectedCollection === 'best-sellers'
+        ? 'Best Sellers'
+        : selectedCollection === 'new-arrivals'
+          ? 'New Arrivals'
+          : selectedCategory === 'all'
+            ? 'The Complete Wardrobe'
+            : storeCategories.find((c) => c.slug === selectedCategory)?.name || 'The Collection';
+
+  const headerDescription = selectedSale
+    ? 'Focused reductions on select pieces from the permanent collection, while they last.'
+    : storeCategories.find((c) => c.slug === selectedCategory)?.description ||
+    'Tailored from organic fibers with meticulous attention to line, drape, and enduring tactility.';
 
   const clearFilters = () => {
     setSearchQuery('');
     setOnlyInStock(false);
     setSelectedCategory('all');
     setSelectedCollection(undefined);
+    setSelectedOccasion(undefined);
+    setSelectedSale(false);
     setSortBy('featured');
     setItemsToShow(6);
   };
@@ -105,13 +155,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
           <div className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="font-serif text-3xl sm:text-4xl text-[#181716] font-normal tracking-tight text-balance">
-                {selectedCollection === 'best-sellers'
-                  ? 'Best Sellers'
-                  : selectedCollection === 'new-arrivals'
-                    ? 'New Arrivals'
-                    : selectedCategory === 'all'
-                  ? 'The Complete Wardrobe'
-                  : storeCategories.find((c) => c.slug === selectedCategory)?.name || 'The Collection'}
+                {headerTitle}
               </h1>
               {selectedCategory !== 'all' && (
                 <button
@@ -123,10 +167,29 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
                   Clear Category
                 </button>
               )}
+              {selectedOccasion && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedOccasion(undefined)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#EFECE6] text-[10px] font-semibold uppercase tracking-wider text-[#63605A] hover:bg-[#181716] hover:text-[#FAF9F6] transition-all"
+                >
+                  <X className="w-3 h-3" />
+                  Clear Occasion
+                </button>
+              )}
+              {selectedSale && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSale(false)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#EFECE6] text-[10px] font-semibold uppercase tracking-wider text-[#63605A] hover:bg-[#181716] hover:text-[#FAF9F6] transition-all"
+                >
+                  <X className="w-3 h-3" />
+                  Clear Sale
+                </button>
+              )}
             </div>
             <p className="text-sm text-[#63605A] max-w-xl text-pretty">
-              {storeCategories.find((c) => c.slug === selectedCategory)?.description ||
-                'Tailored from organic fibers with meticulous attention to line, drape, and enduring tactility.'}
+              {headerDescription}
             </p>
           </div>
 
@@ -170,7 +233,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
           >
             <Filter className="w-3.5 h-3.5" />
             Filters
-            {(onlyInStock || searchQuery) && <span className="w-1.5 h-1.5 rounded-full bg-[#8A745C]" />}
+            {(onlyInStock || searchQuery || selectedOccasion || selectedSale) && <span className="w-1.5 h-1.5 rounded-full bg-[#8A745C]" />}
           </button>
 
           <div className="hidden lg:flex items-center gap-3">
@@ -203,7 +266,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({ initialCategory = 'all', ini
             </div>
           </div>
 
-          {(searchQuery || onlyInStock || selectedCategory !== 'all' || selectedCollection) && (
+          {(searchQuery || onlyInStock || selectedCategory !== 'all' || selectedCollection || selectedOccasion || selectedSale) && (
             <button
               type="button"
               onClick={clearFilters}

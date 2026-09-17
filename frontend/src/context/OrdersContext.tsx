@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Order, OrderItem, OrderStatus, CreateOrderInput, OrderTimelineEvent } from '../types';
 import { useStore } from './StoreContext';
 import { api } from '../services/apiClient';
+import { mapServerOrder } from '../utils/orderMapper';
 import {
   FREE_SHIPPING_THRESHOLD,
   STANDARD_SHIPPING_COST,
@@ -89,8 +90,8 @@ export interface OrdersContextType {
   createOrder: (input: CreateOrderInput) => Promise<{ success: boolean; order?: Order; error?: string }>;
   getOrder: (orderNumberOrId: string) => Order | undefined;
   updateOrderStatus: (orderNumber: string, status: OrderStatus) => void;
-  cancelOrder: (orderNumber: string) => { success: boolean; message: string };
-  receiveOrder: (orderNumber: string) => { success: boolean; message: string };
+  cancelOrder: (orderNumber: string) => Promise<{ success: boolean; order?: Order; message: string }>;
+  receiveOrder: (orderNumber: string) => Promise<{ success: boolean; order?: Order; message: string }>;
   searchOrders: (query: string) => Order[];
   resetOrdersToDefault: () => void;
 }
@@ -180,7 +181,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           shippingCost: serverOrder.shippingCost,
           tax: serverOrder.tax,
           total: serverOrder.total,
-          status: serverOrder.status === 'cancelled' ? 'cancelled' : 'confirmed',
+          status: serverOrder.status,
           paymentStatus: serverOrder.paymentStatus,
           paymentMethod: serverOrder.paymentMethod,
           notes: input.notes,
@@ -221,13 +222,20 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setOrders((prev) => [mappedOrder, ...prev]);
         return { success: true, order: mappedOrder };
       } catch (backendErr: unknown) {
-        const errorObj = backendErr as Error & { code?: string };
-        // If the server rejected due to stock conflict, report authoritative message
-        if (
-          errorObj.code === 'INSUFFICIENT_STOCK' ||
-          errorObj.message?.toLowerCase().includes('stock')
-        ) {
-          return { success: false, error: errorObj.message };
+        const errorObj = backendErr as Error & { code?: string; details?: unknown };
+
+        // The backend responded with an application error (e.g. VALIDATION_ERROR
+        // for stock conflicts, NOT_FOUND, RATE_LIMITED). Surface the authoritative
+        // message instead of fabricating a local order.
+        if (errorObj.code) {
+          let message = errorObj.message || 'Could not place the order.';
+          if (errorObj.code === 'VALIDATION_ERROR' && errorObj.details) {
+            const details = errorObj.details as Record<string, unknown>;
+            if (typeof details.stock === 'string') {
+              message = details.stock;
+            }
+          }
+          return { success: false, error: message };
         }
 
         // Local fallback if offline or local preview
@@ -370,7 +378,7 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const cancelOrder = useCallback(
-    (orderNumber: string): { success: boolean; message: string } => {
+    async (orderNumber: string): Promise<{ success: boolean; order?: Order; message: string }> => {
       const order = orders.find((o) => o.orderNumber.toUpperCase() === orderNumber.toUpperCase());
       if (!order) {
         return { success: false, message: 'Order not found.' };
@@ -385,47 +393,80 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       }
 
-      // Restock inventory
-      restockInventoryForOrder(
-        order.items.map((i) => ({
-          productId: i.productId,
-          variantId: i.variantId,
-          quantity: i.quantity,
-          sku: i.sku,
-        })),
-        orderNumber
-      );
+      const applyCancelled = (cancelled: Order) => {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.orderNumber.toUpperCase() === cancelled.orderNumber.toUpperCase() ? cancelled : o
+          )
+        );
+      };
 
-      const now = new Date().toISOString();
-      setOrders((prev) =>
-        prev.map((o) => {
-          if (o.orderNumber !== order.orderNumber) return o;
+      try {
+        // Authoritative server cancellation releases reserved atelier stock.
+        const serverOrder = await api.cancelOrder(order.orderNumber);
+        const mapped = mapServerOrder(serverOrder);
+        const updated: Order = {
+          ...mapped,
+          timeline: [
+            ...mapped.timeline,
+            {
+              status: 'cancelled',
+              title: 'Order Cancelled & Restocked',
+              description: 'Client cancellation confirmed. Atelier inventory restocked.',
+              timestamp: new Date().toISOString(),
+              completed: true,
+            },
+          ],
+        };
+        applyCancelled(updated);
+        return { success: true, order: updated, message: `Order ${orderNumber} has been cancelled and restocked.` };
+      } catch (err: unknown) {
+        const errorObj = err as Error & { code?: string };
+        // The backend refused the cancellation (e.g. too late to cancel). Surface its message.
+        if (errorObj.code && errorObj.code !== 'NOT_FOUND') {
           return {
-            ...o,
-            status: 'cancelled',
-            paymentStatus: 'refunded',
-            updatedAt: now,
-            timeline: [
-              ...o.timeline,
-              {
-                status: 'cancelled',
-                title: 'Order Cancelled & Restocked',
-                description: 'Client requested cancellation. Atelier inventory restocked.',
-                timestamp: now,
-                completed: true,
-              },
-            ],
+            success: false,
+            message: errorObj.message || 'Atelier could not cancel this order.',
           };
-        })
-      );
+        }
 
-      return { success: true, message: `Order ${orderNumber} has been cancelled and restocked.` };
+        // Server has no record of this order (offline/local preview) — fall back to a
+        // local cancellation that restocks the local inventory ledger.
+        restockInventoryForOrder(
+          order.items.map((i) => ({
+            productId: i.productId,
+            variantId: i.variantId,
+            quantity: i.quantity,
+            sku: i.sku,
+          })),
+          order.orderNumber
+        );
+        const now = new Date().toISOString();
+        const updated: Order = {
+          ...order,
+          status: 'cancelled',
+          paymentStatus: 'refunded',
+          updatedAt: now,
+          timeline: [
+            ...order.timeline,
+            {
+              status: 'cancelled',
+              title: 'Order Cancelled & Restocked',
+              description: 'Client cancellation confirmed. Atelier inventory restocked.',
+              timestamp: now,
+              completed: true,
+            },
+          ],
+        };
+        applyCancelled(updated);
+        return { success: true, order: updated, message: `Order ${orderNumber} has been cancelled and restocked.` };
+      }
     },
     [orders, restockInventoryForOrder]
   );
 
   const receiveOrder = useCallback(
-    (orderNumber: string): { success: boolean; message: string } => {
+    async (orderNumber: string): Promise<{ success: boolean; order?: Order; message: string }> => {
       const order = orders.find((o) => o.orderNumber.toUpperCase() === orderNumber.toUpperCase());
       if (!order) {
         return { success: false, message: 'Order not found.' };
@@ -433,33 +474,70 @@ export const OrdersProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (order.status === 'received') {
         return { success: false, message: 'Order is already marked as received.' };
       }
-      if (order.status !== 'delivered') {
-        return { success: false, message: 'Only delivered orders can be marked as received.' };
+      if (order.status !== 'confirmed' && order.status !== 'delivered') {
+        return { success: false, message: 'Only confirmed or delivered orders can be marked as received.' };
       }
 
-      const now = new Date().toISOString();
-      setOrders((prev) =>
-        prev.map((o) => {
-          if (o.orderNumber !== order.orderNumber) return o;
-          return {
-            ...o,
-            status: 'received',
-            updatedAt: now,
-            timeline: [
-              ...o.timeline,
-              {
-                status: 'received',
-                title: 'Order Received',
-                description: 'Customer confirmed receipt of their order.',
-                timestamp: now,
-                completed: true,
-              },
-            ],
-          };
-        })
-      );
+      const applyReceived = (updated: Order) => {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.orderNumber.toUpperCase() === updated.orderNumber.toUpperCase() ? updated : o
+          )
+        );
+      };
 
-      return { success: true, message: `Order ${orderNumber} has been marked as received.` };
+      try {
+        // Authoritative server confirmation (settles cash/pay-on-delivery balances).
+        const serverOrder = await api.receiveOrder(order.orderNumber);
+        const mapped = mapServerOrder(serverOrder);
+        const updated: Order = {
+          ...mapped,
+          timeline: [
+            ...mapped.timeline,
+            {
+              status: 'received',
+              title: 'Order Received',
+              description: 'Customer confirmed receipt of their order.',
+              timestamp: serverOrder.updatedAt || new Date().toISOString(),
+              completed: true,
+            },
+          ],
+        };
+        applyReceived(updated);
+        return { success: true, order: updated, message: `Order ${orderNumber} has been marked as received.` };
+      } catch (err: unknown) {
+        const errorObj = err as Error & { code?: string };
+        if (errorObj.code && errorObj.code !== 'NOT_FOUND') {
+          return {
+            success: false,
+            message: errorObj.message || 'The order could not be marked as received.',
+          };
+        }
+
+        const now = new Date().toISOString();
+        // For cash/pay-on-delivery orders the balance is settled on confirmation
+        // of receipt. Prepaid orders (M-Pesa / card) keep their payment status.
+        const isDeliveryPayment =
+          order.paymentMethod !== 'mpesa' && order.paymentMethod !== 'card';
+        const updated: Order = {
+          ...order,
+          status: 'received',
+          paymentStatus: isDeliveryPayment ? 'paid' : order.paymentStatus,
+          updatedAt: now,
+          timeline: [
+            ...order.timeline,
+            {
+              status: 'received',
+              title: 'Order Received',
+              description: 'Customer confirmed receipt of their order.',
+              timestamp: now,
+              completed: true,
+            },
+          ],
+        };
+        applyReceived(updated);
+        return { success: true, order: updated, message: `Order ${orderNumber} has been marked as received.` };
+      }
     },
     [orders]
   );

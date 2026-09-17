@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
+import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { useRouter } from '../router/RouterContext';
+import { setPostAuthDestination } from '../utils/postAuthRedirect';
 import { QuantitySelector } from '../components/ui/QuantitySelector';
 import { Price } from '../components/ui/Price';
 import { Button } from '../components/ui/Button';
@@ -31,6 +34,23 @@ export const CartPage: React.FC = () => {
     estimatedTotal,
   } = useCart();
   const { navigate } = useRouter();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { getProductById } = useStore();
+
+  const goToProduct = (productId: string) => {
+    const product = getProductById(productId);
+    navigate(product ? `/product/${product.slug}` : '/shop');
+  };
+
+  const goToCheckout = () => {
+    if (isAuthLoading) return;
+    if (!user) {
+      setPostAuthDestination('/checkout');
+      navigate('/account');
+      return;
+    }
+    navigate('/checkout');
+  };
 
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [promoMsg, setPromoMsg] = useState<{ text: string; isError: boolean } | null>(null);
@@ -162,7 +182,7 @@ export const CartPage: React.FC = () => {
                   <div className="flex gap-4 items-start sm:items-center flex-1 min-w-0">
                     <div
                       className="w-20 h-26 rounded-xl overflow-hidden bg-[#EFECE6] shrink-0 cursor-pointer shadow-sm group-hover:shadow-md transition-shadow"
-                      onClick={() => navigate('/shop')}
+                      onClick={() => goToProduct(item.productId)}
                     >
                       <img
                         src={item.image}
@@ -174,7 +194,7 @@ export const CartPage: React.FC = () => {
                     <div className="space-y-1.5 min-w-0">
                       <h3
                         className="font-serif text-base text-[#181716] font-medium cursor-pointer hover:text-[#8A745C] transition-colors truncate"
-                        onClick={() => navigate('/shop')}
+                        onClick={() => goToProduct(item.productId)}
                       >
                         {item.name}
                       </h3>
@@ -337,7 +357,7 @@ export const CartPage: React.FC = () => {
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/checkout')}
+                  onClick={() => goToCheckout()}
                   className="w-full gap-2 uppercase tracking-wider text-xs shadow-md hover:shadow-lg"
                 >
                   <span>Proceed to Checkout</span>

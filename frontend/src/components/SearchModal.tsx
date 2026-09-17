@@ -129,18 +129,26 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
                       Shop by Category
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {['Dresses', 'Tops & Knitwear', 'Trousers', 'Outerwear', 'Skirts', 'Accessories', 'Shoes', 'Sale'].map((cat) => (
+                      {[
+                        { label: 'Dresses', path: '/shop/dresses' },
+                        { label: 'Tops & Knitwear', path: '/shop/tops' },
+                        { label: 'Trousers', path: '/shop/bottoms' },
+                        { label: 'Outerwear', path: '/shop/outerwear' },
+                        { label: 'Skirts', path: '/shop/bottoms' },
+                        { label: 'Accessories', path: '/shop/accessories' },
+                        { label: 'Shoes', path: '/shop/shoes' },
+                        { label: 'Sale', path: '/shop?sale=true' },
+                      ].map((cat) => (
                         <button
-                          key={cat}
+                          key={cat.label}
                           type="button"
                           onClick={() => {
-                            setQuery(cat);
                             onClose();
-                            navigate('/shop');
+                            navigate(cat.path);
                           }}
                           className="px-4 py-3 rounded-xl bg-[#FAF9F6] border border-[#E8E5DF] text-sm text-[#181716] text-left hover:border-[#181716] hover:bg-[#FFFFFF] hover:shadow-sm transition-all text-start"
                         >
-                          {cat}
+                          {cat.label}
                         </button>
                       ))}
                     </div>
@@ -155,7 +163,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
                       {[
                         { label: 'New Arrivals', action: () => navigate('/shop?collection=new-arrivals') },
                         { label: 'Best Sellers', action: () => navigate('/shop?collection=best-sellers') },
-                        { label: 'Sale', action: () => navigate('/shop') },
+                        { label: 'Sale', action: () => navigate('/shop?sale=true') },
                         { label: 'All Products', action: () => navigate('/shop') },
                       ].map((link) => (
                         <button
@@ -228,7 +236,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => 
                   {results.length > 8 && (
                     <button
                       type="button"
-                      onClick={() => { onClose(); navigate('/shop'); }}
+                      onClick={() => { onClose(); navigate(`/shop?q=${encodeURIComponent(query.trim())}`); }}
                       className="w-full mt-4 px-4 py-3 rounded-xl border border-[#E8E5DF] bg-[#FAF9F6] text-sm text-[#181716] hover:border-[#181716] hover:bg-[#FFFFFF] transition-all flex items-center justify-center gap-2"
                     >
                       <span>View all {results.length} results</span>

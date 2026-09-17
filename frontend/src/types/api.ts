@@ -120,7 +120,7 @@ export interface OrderDTO {
   tax: number;
   total: number;
   shippingMethod: 'standard' | 'express';
-  paymentMethod: 'mpesa' | 'card';
+  paymentMethod: 'mpesa' | 'card' | 'cash_on_delivery' | 'pay_on_delivery';
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'received' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
   paymentIntentId?: string;

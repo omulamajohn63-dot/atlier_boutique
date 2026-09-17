@@ -9,6 +9,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<{ error?: string; needsVerification?: boolean }>;
   signUp: (email: string, password: string, profile: { fullName: string; phone: string }) => Promise<{ error?: string; needsVerification?: boolean }>;
   updateProfile: (profile: { fullName: string; phone: string }) => Promise<{ error?: string }>;
+  updatePassword: (currentPassword: string, newPassword: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -74,8 +75,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return error ? { error: error.message } : {};
   };
 
+  const updatePassword = async (currentPassword: string, newPassword: string) => {
+    if (!supabase) return { error: 'Account access is not configured yet.' };
+    if (!user?.email) return { error: 'You must be signed in to change your password.' };
+
+    // Verify the current password by re-authenticating before allowing the change.
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+    if (verifyError) {
+      return { error: 'Current password is incorrect.' };
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    return error ? { error: error.message } : {};
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isConfigured: Boolean(supabase), signIn, signUp, updateProfile, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, isConfigured: Boolean(supabase), signIn, signUp, updateProfile, updatePassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );

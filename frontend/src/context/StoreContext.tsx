@@ -161,7 +161,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const [productsResponse, categoriesResponse] = await Promise.all([
-        api.getProducts({ limit: 200 }),
+        api.getProducts({ limit: 100 }),
         api.getCategories(),
       ]);
 

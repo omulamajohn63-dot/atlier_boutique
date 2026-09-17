@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useOrders } from '../context/OrdersContext';
 import { useRouter } from '../router/RouterContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/apiClient';
+import { setPostAuthDestination } from '../utils/postAuthRedirect';
+import { getSavedAddresses, SavedAddress } from '../utils/addressBook';
 import { Button } from '../components/ui/Button';
 import { Price } from '../components/ui/Price';
 import {
@@ -166,10 +168,6 @@ export const CheckoutPage: React.FC = () => {
     city: '',
     postalCode: '',
     orderNotes: '',
-    cardName: '',
-    cardNumber: '',
-    cardExp: '',
-    cardCvc: '',
     sameBilling: true,
   });
 
@@ -178,6 +176,36 @@ export const CheckoutPage: React.FC = () => {
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState<string | null>(null);
   const [paymentPending, setPaymentPending] = useState(false);
+
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
+  const addressPrefillApplied = useRef(false);
+
+  const applySavedAddress = useCallback((address: SavedAddress) => {
+    setFormData((prev) => ({
+      ...prev,
+      firstName: address.firstName,
+      lastName: address.lastName,
+      phone: address.phone,
+      address: address.addressLine1,
+      apartment: address.addressLine2,
+      county: address.county,
+      subcounty: address.subcounty,
+      city: address.city,
+      postalCode: address.postalCode,
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!user || addressPrefillApplied.current) return;
+    const loaded = getSavedAddresses(user.id);
+    setSavedAddresses(loaded);
+    const defaultAddress = loaded.find((address) => address.isDefault) ?? loaded[0];
+    if (defaultAddress) {
+      applySavedAddress(defaultAddress);
+    }
+    addressPrefillApplied.current = true;
+  }, [user, applySavedAddress]);
 
   useEffect(() => {
     if (!user) return;
@@ -216,10 +244,9 @@ export const CheckoutPage: React.FC = () => {
     setFormData((prev) => ({
       ...prev,
       email: user.email || prev.email,
-      phone,
-      firstName: firstNameMeta || fallbackFirstName || '',
-      lastName: lastNameMeta || fallbackLastName || '',
-      cardName: fullName || prev.cardName,
+      phone: phone || prev.phone,
+      firstName: firstNameMeta || fallbackFirstName || prev.firstName,
+      lastName: lastNameMeta || fallbackLastName || prev.lastName,
     }));
   }, [user]);
 
@@ -252,6 +279,11 @@ export const CheckoutPage: React.FC = () => {
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setPostAuthDestination('/checkout');
+      navigate('/account');
+      return;
+    }
     setCheckoutError('');
     setIsSubmitting(true);
 
@@ -281,6 +313,19 @@ export const CheckoutPage: React.FC = () => {
           setIsSubmitting(false);
           await clearCart();
           navigate(`/order/success?order=${result.order.orderNumber}`);
+          return;
+        }
+
+        if (paymentMethod === 'card') {
+          const intent = await api.createPaymentIntent(
+            result.order.orderNumber,
+            'card',
+            undefined
+          );
+          setPaymentIntentId(intent.id);
+          setPendingOrderNumber(result.order.orderNumber);
+          setPaymentPending(true);
+          setIsSubmitting(false);
           return;
         }
 
@@ -387,6 +432,35 @@ export const CheckoutPage: React.FC = () => {
         </div>
       </div>
 
+      {!user && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-[#E8E5DF] bg-[#FFFFFF] p-5 shadow-sm">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#FAF9F6] border border-[#E8E5DF] flex items-center justify-center text-[#8A745C] shrink-0">
+              <User className="w-4.5 h-4.5" strokeWidth={1.5} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-[#181716] uppercase tracking-wider">
+                Sign in to place your order
+              </p>
+              <p className="text-xs text-[#63605A] mt-0.5">
+                Your cart is saved. You will sign in before confirming your order and following delivery.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setPostAuthDestination('/checkout');
+              navigate('/account');
+            }}
+            className="shrink-0"
+          >
+            Sign In
+          </Button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmitOrder}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
           {/* Main Form Fields (Col 7) */}
@@ -419,6 +493,53 @@ export const CheckoutPage: React.FC = () => {
 
             {/* 2. Shipping Address */}
             <SectionCard step={2} title="Shipping Destination" icon={<MapPin className="w-4 h-4 text-[#8A745C]" />}>
+              {savedAddresses.length > 0 && (
+                <div className="rounded-xl border border-[#E8E5DF] bg-[#FAF9F6] p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#63605A]">
+                      Saved Addresses
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/account/addresses')}
+                      className="text-xs font-semibold text-[#8A745C] hover:text-[#6B5642] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C] rounded-full px-2 py-1"
+                    >
+                      Manage
+                    </button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <select
+                      value={selectedAddressId}
+                      onChange={(e) => setSelectedAddressId(e.target.value)}
+                      aria-label="Choose a saved address"
+                      className="w-full sm:flex-1 px-3.5 py-2.5 bg-[#FFFFFF] border border-[#E8E5DF] rounded-xl text-sm text-[#181716] focus:outline-none focus:border-[#181716] focus:ring-2 focus:ring-[#8A745C]/20 transition-all appearance-none pr-10 cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        Choose a saved address
+                      </option>
+                      {savedAddresses.map((address) => (
+                        <option key={address.id} value={address.id}>
+                          {address.label || 'Saved Address'} — {address.addressLine1}, {address.city}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={!selectedAddressId}
+                      onClick={() => {
+                        const address = savedAddresses.find((a) => a.id === selectedAddressId);
+                        if (address) applySavedAddress(address);
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <LabeledInput label="First Name" name="firstName" required value={formData.firstName} onChange={handleInputChange} placeholder="Jane" />
                 <LabeledInput label="Last Name" name="lastName" required value={formData.lastName} onChange={handleInputChange} placeholder="Doe" />
@@ -555,15 +676,19 @@ export const CheckoutPage: React.FC = () => {
                 </div>
 
                 {paymentMethod === 'card' && (
-                  <div className="space-y-4">
-                    <LabeledInput label="Cardholder Name" name="cardName" value={formData.cardName} onChange={handleInputChange} placeholder="Jane Doe" />
-                    <LabeledInput label="Card Number" name="cardNumber" value={formData.cardNumber} onChange={handleInputChange} placeholder="4242 4242 4242 4242" />
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <LabeledInput label="Expiration" name="cardExp" value={formData.cardExp} onChange={handleInputChange} placeholder="MM/YY" />
-                      <LabeledInput label="Security Code (CVC)" name="cardCvc" value={formData.cardCvc} onChange={handleInputChange} placeholder="123" />
-                    </div>
-                  </div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border border-[#E8E5DF] bg-[#FAF9F6] px-4 py-3.5 space-y-1.5"
+                  >
+                    <p className="text-[11px] leading-relaxed text-[#63605A]">
+                      Card payments run in{' '}
+                      <span className="font-semibold text-[#8A745C]">sandbox preview</span>:
+                      this storefront does not yet connect a live card gateway, so no card details
+                      are collected. Confirming the order completes it and marks it paid{' '}
+                      <span className="font-semibold text-[#63605A]">without charging a real card</span>.
+                    </p>
+                  </motion.div>
                 )}
 
                 {paymentMethod !== 'card' && (
@@ -676,9 +801,13 @@ export const CheckoutPage: React.FC = () => {
                   <div className="flex items-start gap-2 text-xs text-[#2E5A44]">
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold">M-Pesa payment request sent</p>
+                      <p className="font-semibold">
+                        {paymentMethod === 'card' ? 'Card payment intent created (sandbox)' : 'M-Pesa payment request sent'}
+                      </p>
                       <p className="mt-1 text-[#4B6B57] leading-relaxed">
-                        Approve the prompt on {formData.phone}, then confirm below.
+                        {paymentMethod === 'card'
+                          ? 'No card will be charged — confirm below to complete the order in sandbox and mark it paid.'
+                          : `Approve the prompt on ${formData.phone}, then confirm below.`}
                       </p>
                     </div>
                   </div>
@@ -690,7 +819,11 @@ export const CheckoutPage: React.FC = () => {
                     onClick={handleConfirmPayment}
                     className="w-full uppercase tracking-wider text-xs"
                   >
-                    {isSubmitting ? 'Checking Payment...' : 'I Have Completed Payment'}
+                    {isSubmitting
+                      ? 'Checking Payment...'
+                      : paymentMethod === 'card'
+                      ? 'Confirm Sandbox Payment'
+                      : 'I Have Completed Payment'}
                   </Button>
                 </motion.div>
               )}

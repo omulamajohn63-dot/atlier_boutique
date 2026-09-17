@@ -2,7 +2,9 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ShoppingBag, ArrowRight, Trash2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { useRouter } from '../router/RouterContext';
+import { setPostAuthDestination } from '../utils/postAuthRedirect';
 import { Button } from './ui/Button';
 import { QuantitySelector } from './ui/QuantitySelector';
 import { Price } from './ui/Price';
@@ -23,6 +25,18 @@ export const CartDrawer: React.FC = () => {
     cartCount,
   } = useCart();
   const { navigate } = useRouter();
+  const { user, isLoading: isAuthLoading } = useAuth();
+
+  const goToCheckout = () => {
+    if (isAuthLoading) return;
+    closeCartDrawer();
+    if (!user) {
+      setPostAuthDestination('/checkout');
+      navigate('/account');
+      return;
+    }
+    navigate('/checkout');
+  };
 
   const progressPercent = Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100));
   const amountRemaining = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
@@ -205,10 +219,7 @@ export const CartDrawer: React.FC = () => {
                     <Button
                       variant="primary"
                       size="md"
-                      onClick={() => {
-                        closeCartDrawer();
-                        navigate('/checkout');
-                      }}
+                      onClick={goToCheckout}
                       className="gap-1.5"
                     >
                       <span>Checkout</span>

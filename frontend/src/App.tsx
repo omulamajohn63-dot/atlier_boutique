@@ -20,6 +20,8 @@ import { CustomerOrderDetailPage } from './pages/CustomerOrderDetailPage';
 import { AccountPage } from './pages/AccountPage';
 import { AboutPage } from './pages/AboutPage';
 import { WishlistPage } from './pages/WishlistPage';
+import { RecentlyViewedPage } from './pages/RecentlyViewedPage';
+import { LegalPage } from './pages/LegalPage';
 import { WishlistProvider } from './context/WishlistContext';
 import { NotificationsProvider } from './context/NotificationsContext';
 import { Product } from './types';
@@ -52,7 +54,14 @@ function AppContent() {
           >
             {route.path === '/' && <HomePage onQuickView={handleQuickView} />}
             {route.path === '/shop' && (
-              <ShopPage initialCategory={route.category || 'all'} initialCollection={route.collection} onQuickView={handleQuickView} />
+              <ShopPage
+                initialCategory={route.category || 'all'}
+                initialCollection={route.collection}
+                initialOccasion={route.occasion}
+                initialQuery={route.query}
+                initialSale={route.sale}
+                onQuickView={handleQuickView}
+              />
             )}
             {route.path === '/product/:slug' && (
               <ProductDetailPage slug={route.slug} onQuickView={handleQuickView} />
@@ -69,6 +78,12 @@ function AppContent() {
             )}
             {route.path === '/track' && <OrderTrackingPage orderNumber={route.orderNumber} />}
             {route.path === '/wishlist' && <WishlistPage />}
+            {route.path === '/recently-viewed' && <RecentlyViewedPage />}
+            {(route.path === '/privacy' ||
+              route.path === '/terms' ||
+              route.path === '/shipping' ||
+              route.path === '/returns' ||
+              route.path === '/cookies') && <LegalPage slug={route.path.slice(1) as 'privacy' | 'terms' | 'shipping' | 'returns' | 'cookies'} />}
           </motion.div>
         </AnimatePresence>
       </main>

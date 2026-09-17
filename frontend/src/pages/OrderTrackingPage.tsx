@@ -17,6 +17,7 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
+import { canCancel, canMarkReceived } from '../utils/orderStatus';
 
 export interface OrderTrackingPageProps {
   orderNumber?: string;
@@ -122,29 +123,31 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ orderNumbe
     }
   };
 
-  const handleCancel = (orderNum: string) => {
+  const handleCancel = async (orderNum: string) => {
     if (!window.confirm(`Are you sure you wish to cancel order ${orderNum}? Reserved atelier stock will be returned.`)) {
       return;
     }
-    const result = cancelOrder(orderNum);
-    if (result.success) {
+    setActionSuccessMsg('');
+    setErrorMsg('');
+    const result = await cancelOrder(orderNum);
+    if (result.success && result.order) {
       setActionSuccessMsg(result.message);
-      const refreshed = getOrder(orderNum);
-      if (refreshed) setActiveOrder(refreshed);
+      setActiveOrder(result.order);
     } else {
       setErrorMsg(result.message);
     }
   };
 
-  const handleReceive = (orderNum: string) => {
+  const handleReceive = async (orderNum: string) => {
     if (!window.confirm(`Confirm that you received order ${orderNum}?`)) {
       return;
     }
-    const result = receiveOrder(orderNum);
-    if (result.success) {
+    setActionSuccessMsg('');
+    setErrorMsg('');
+    const result = await receiveOrder(orderNum);
+    if (result.success && result.order) {
       setActionSuccessMsg(result.message);
-      const refreshed = getOrder(orderNum);
-      if (refreshed) setActiveOrder(refreshed);
+      setActiveOrder(result.order);
     } else {
       setErrorMsg(result.message);
     }
@@ -287,21 +290,21 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ orderNumbe
             </div>
 
             <div className="flex items-center gap-3">
-              {activeOrder.status === 'processing' && (
+              {canCancel(activeOrder.status) && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleCancel(activeOrder.orderNumber)}
+                  onClick={() => void handleCancel(activeOrder.orderNumber)}
                   className="text-xs text-[#9B1C1C] hover:bg-[#FDF2F2] border-[#F8B4B4]"
                 >
                   Cancel & Restock
                 </Button>
               )}
-              {activeOrder.status === 'delivered' && (
+              {canMarkReceived(activeOrder.status) && (
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => handleReceive(activeOrder.orderNumber)}
+                  onClick={() => void handleReceive(activeOrder.orderNumber)}
                   className="text-xs"
                 >
                   Mark as Received

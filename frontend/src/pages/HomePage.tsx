@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useRouter } from '../router/RouterContext';
 import { Product } from '../types';
-import { Sparkles, ArrowRight, ShieldCheck, Feather, RefreshCw, Truck, ShoppingBag, Gem, Palette, Star, Heart, Send } from 'lucide-react';
+import { Sparkles, ArrowRight, ShieldCheck, Feather, RefreshCw, Truck, Palette } from 'lucide-react';
 import { CATEGORIES } from '../data/mockData';
 import { motion } from 'motion/react';
 
@@ -46,9 +46,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
   const { navigate } = useRouter();
   const { products } = useStore();
 
-  const featuredProducts = (products.filter((p) => p.isFeatured).length > 0
-    ? products.filter((p) => p.isFeatured)
-    : products).slice(0, 4);
   const newArrivals = (products.filter((p) => p.isNewArrival).length > 0
     ? products.filter((p) => p.isNewArrival)
     : [...products].sort((a, b) => b.createdAt.localeCompare(a.createdAt))).slice(0, 4);
@@ -57,7 +54,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
     : products).slice(0, 4);
 
   return (
-    <div className="space-y-20 sm:space-y-28 pb-20">
+    <div className="space-y-16 sm:space-y-24 pb-20">
       {/* 1. HERO SECTION */}
       <section className="relative bg-[#FAF9F6] overflow-hidden">
         {/* Decorative gradient blobs */}
@@ -177,25 +174,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
                     Featured Silhouette
                   </span>
                   <p className="font-serif text-sm text-[#181716]">The Drape Silk Midi Dress</p>
-                  <p className="text-xs text-[#827E77] mt-1 flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-[#8A745C] text-[#8A745C]" />
-                    Hand-finished in Porto, Portugal
-                  </p>
-                </div>
-
-                {/* Floating rating badge (top-right) */}
-                <div className="absolute -top-4 -right-4 bg-[#FFFFFF] p-3 rounded-2xl border border-[#E8E5DF] shadow-lg hidden sm:flex items-center gap-2 animate-slide-up stagger-2">
-                  <div className="flex -space-x-1">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="w-7 h-7 rounded-full bg-gradient-to-br from-[#8A745C] to-[#A6937D] border-2 border-white flex items-center justify-center">
-                        <span className="text-[8px] text-white font-bold">{i === 3 ? '...' : 'P'}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold text-[#181716]">4.9 Rating</p>
-                    <p className="text-[9px] text-[#827E77]">2,400+ reviews</p>
-                  </div>
+                  <p className="text-xs text-[#827E77] mt-1">The signature piece of the season</p>
                 </div>
               </div>
             </motion.div>
@@ -203,64 +182,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
         </div>
       </section>
 
-      {/* 2. BRAND TRUST STRIP */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { icon: Feather, label: 'Natural Yarns', desc: 'Certified organic fibers' },
-            { icon: Truck, label: 'Express Courier', desc: 'Carbon-neutral delivery' },
-            { icon: RefreshCw, label: '30-Day Returns', desc: 'Complimentary exchanges' },
-            { icon: ShieldCheck, label: 'Secure Checkout', desc: '256-bit SSL encryption' },
-          ].map((item, index) => (
-            <motion.div
-              key={item.label}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
-              transition={{ duration: 0.4, delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
-              className="flex items-start gap-3 p-4 rounded-2xl bg-[#FFFFFF] border border-[#E8E5DF] hover:shadow-md transition-all hover:border-[#D8D3CB]"
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#FAF9F6] border border-[#E8E5DF] flex items-center justify-center text-[#8A745C] flex-shrink-0">
-                <item.icon className="w-5 h-5 stroke-[1.5]" />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-xs font-semibold text-[#181716]">{item.label}</p>
-                <p className="text-[11px] text-[#827E77]">{item.desc}</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* 3. FEATURED COLLECTION SECTION */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <SectionHeader
-          eyebrow="Curated Highlights"
-          title="The Signature Capsule"
-          actionLabel="View All Pieces"
-          onAction={() => navigate('/shop')}
-        />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-          {featuredProducts.map((product, index) => (
-            <motion.div
-              key={product.id}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
-              transition={{ duration: 0.4, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <ProductCard
-                product={product}
-                onQuickView={onQuickView}
-                onClick={() => navigate(`/product/${product.slug}`)}
-              />
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* 4. EDITORIAL BRAND STORY / CRAFTSMANSHIP */}
+      {/* 2. EDITORIAL BRAND STORY / CRAFTSMANSHIP */}
       <section className="bg-[#FFFFFF] border-y border-[#E8E5DF] py-16 sm:py-24 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-gradient-to-b from-[#8A745C]/5 via-transparent to-transparent rounded-full blur-3xl pointer-events-none" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -357,35 +279,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
         </div>
       </section>
 
-      {/* 5. NEW ARRIVALS SECTION */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <SectionHeader
-          eyebrow="Fresh Off The Loom"
-          title="New Arrivals"
-          actionLabel="Browse New Arrivals"
-          onAction={() => navigate('/shop?collection=new-arrivals')}
-        />
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-          {newArrivals.map((product, index) => (
-            <motion.div
-              key={product.id}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-50px' }}
-              transition={{ duration: 0.4, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <ProductCard
-                product={product}
-                onQuickView={onQuickView}
-                onClick={() => navigate(`/product/${product.slug}`)}
-              />
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* 6. SHOP BY CATEGORY SECTION */}
+      {/* 3. SHOP BY CATEGORY SECTION */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeader
           eyebrow="Shop the Edit"
@@ -429,7 +323,35 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
         </div>
       </section>
 
-      {/* 7. FULL-WIDTH CAMPAIGN SECTION */}
+      {/* 4. NEW ARRIVALS SECTION */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <SectionHeader
+          eyebrow="Fresh Off The Loom"
+          title="New Arrivals"
+          actionLabel="Browse New Arrivals"
+          onAction={() => navigate('/shop?collection=new-arrivals')}
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+          {newArrivals.map((product, index) => (
+            <motion.div
+              key={product.id}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-50px' }}
+              transition={{ duration: 0.4, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <ProductCard
+                product={product}
+                onQuickView={onQuickView}
+                onClick={() => navigate(`/product/${product.slug}`)}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. FULL-WIDTH CAMPAIGN SECTION */}
       <section className="relative bg-[#181716] text-[#FAF9F6] overflow-hidden">
         <div className="absolute inset-0">
           <img
@@ -471,7 +393,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
         </div>
       </section>
 
-      {/* 8. BEST SELLERS SECTION */}
+      {/* 6. BEST SELLERS SECTION */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeader
           eyebrow="Most Loved Pieces"
@@ -497,153 +419,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onQuickView }) => {
             </motion.div>
           ))}
         </div>
-      </section>
-
-      {/* 9. ATELIER EXPERIENCE SECTION */}
-      <section className="bg-[#FFFFFF] border-y border-[#E8E5DF] py-16 sm:py-24 relative overflow-hidden">
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tl from-[#8A745C]/5 via-transparent to-transparent rounded-full blur-3xl pointer-events-none" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true, margin: '-50px' }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-              className="lg:col-span-5"
-            >
-              <div className="aspect-[4/5] rounded-[2rem] overflow-hidden border border-[#E8E5DF] bg-[#EFECE6] shadow-xl relative group image-zoom">
-                <img
-                  src="https://images.unsplash.com/photo-1551232864-3f9e0f24eb67?q=80&w=1000&auto=format&fit=crop"
-                  alt="Atelier experience"
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute bottom-4 left-4 right-4">
-                  <div className="bg-[#FFFFFF]/95 backdrop-blur-sm p-3 rounded-2xl border border-[#E8E5DF] shadow-lg flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Heart className="w-4 h-4 text-[#9E332B]" fill="#9E332B" />
-                      <p className="text-[10px] text-[#181716] font-medium">Loved by 2,400+ customers</p>
-                    </div>
-                    <div className="flex -space-x-1.5">
-                      {['from-sandstone to-A6937D', 'from-onyx to-onyx-soft', 'from-sandstone-light to-sandstone'].map((gradient, i) => (
-                        <div key={i} className={`w-6 h-6 rounded-full bg-gradient-to-br ${gradient} border-2 border-white`} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-            <div className="lg:col-span-7 space-y-7">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-50px' }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              >
-                <span className="text-xs uppercase tracking-widest text-[#8A745C] font-semibold flex items-center gap-2">
-                  <span className="w-8 h-px bg-[#8A745C]" />
-                  Atelier Experience
-                </span>
-                <h2 className="font-serif text-3xl sm:text-4xl text-[#181716] leading-tight mt-2 text-balance">
-                  From studio edit to personal wardrobe.
-                </h2>
-                <p className="text-sm sm:text-base leading-relaxed text-[#63605A] mt-4 max-w-xl text-pretty">
-                  Every order is prepared with garment care, fit guidance, and a considered delivery cadence.
-                  Our team curates styling notes, fit recommendations, and maintenance advice for the life of the piece.
-                </p>
-              </motion.div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" role="list" aria-label="Atelier experience steps">
-                {[
-                  { icon: Sparkles, num: '01', label: 'Concierge Edit' },
-                  { icon: ShoppingBag, num: '02', label: 'Careful Dispatch' },
-                  { icon: Gem, num: '03', label: 'Aftercare' },
-                ].map((step, index) => (
-                  <motion.div
-                    key={step.num}
-                    role="listitem"
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: '-50px' }}
-                    transition={{ duration: 0.4, delay: 0.1 + index * 0.1, ease: [0.16, 1, 0.3, 1] }}
-                    className="rounded-2xl border border-[#E8E5DF] bg-[#FAF9F6] p-5 hover:shadow-md hover:border-[#D8D3CB] transition-all hover-lift-sm"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-white border border-[#E8E5DF] flex items-center justify-center text-[#8A745C] mb-3 shadow-sm">
-                      <step.icon className="w-4.5 h-4.5" />
-                    </div>
-                    <p className="font-serif text-xl mt-3 text-[#181716]">{step.num}</p>
-                    <p className="text-[11px] uppercase tracking-widest text-[#827E77] mt-1.5 font-medium">{step.label}</p>
-                  </motion.div>
-                ))}
-              </div>
-
-              <div className="pt-4">
-                <Button variant="primary" size="lg" onClick={() => navigate('/shop')} className="gap-2">
-                  <span>Build Your Capsule</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 10. NEWSLETTER SECTION */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="bg-[#FFFFFF] border border-[#E8E5DF] rounded-3xl p-8 sm:p-12 space-y-4 shadow-xl relative overflow-hidden"
-        >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[#8A745C] to-transparent" />
-          <div className="absolute top-10 left-1/2 -translate-x-1/2 w-64 h-64 bg-gradient-to-b from-[#8A745C]/5 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-          <div className="w-14 h-14 rounded-2xl bg-[#FAF9F6] border border-[#E8E5DF] flex items-center justify-center mx-auto text-[#8A745C] shadow-sm relative">
-            <Send className="w-6 h-6" />
-          </div>
-
-          <span className="block text-xs uppercase tracking-widest text-[#8A745C] font-semibold relative">
-            Private Salon & Capsule Drops
-          </span>
-          <h3 className="font-serif text-2xl sm:text-3xl text-[#181716] font-normal text-balance relative">
-            Join The Atelier Gazette
-          </h3>
-          <p className="text-sm text-[#63605A] max-w-md mx-auto leading-relaxed relative text-pretty">
-            Subscribers receive private pre-order access 48 hours prior to public seasonal releases
-            and invitations to atelier archive events.
-          </p>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.querySelector('input') as HTMLInputElement;
-              if (input?.value) {
-                alert('Thank you for subscribing to The Atelier Gazette.');
-                input.value = '';
-              }
-            }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto pt-4 relative"
-          >
-            <div className="relative w-full">
-              <Send className="w-4 h-4 text-[#827E77] absolute left-4 top-1/2 -translate-y-1/2" aria-hidden="true" />
-              <input
-                type="email"
-                required
-                placeholder="Enter your email address"
-                className="w-full pl-11 pr-4 py-3 bg-[#FAF9F6] border border-[#E8E5DF] rounded-xl text-sm text-[#181716] placeholder-[#A29E96] focus:outline-none focus:border-[#181716] focus:ring-2 focus:ring-[#8A745C]/20 transition-all"
-              />
-            </div>
-            <Button variant="primary" size="md" type="submit" className="w-full sm:w-auto gap-2">
-              <span>Subscribe</span>
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </form>
-          <p className="text-[11px] text-[#827E77] pt-1 relative">
-            We respect your privacy. Unsubscribe at any moment.
-          </p>
-        </motion.div>
       </section>
     </div>
   );

@@ -1,18 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from '../router/RouterContext';
 import { Button } from './ui/Button';
-import { Sparkles, Truck, RotateCcw, ShieldCheck, Mail, MapPin, Phone, ArrowRight, Instagram, Twitter, Facebook, Youtube } from 'lucide-react';
+import { addNewsletterSubscriber } from '../utils/newsletter';
+import { Sparkles, Truck, RotateCcw, ShieldCheck, Mail, MapPin, Phone, ArrowRight, Instagram, Twitter, Facebook, Youtube, CheckCircle2 } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   const { navigate } = useRouter();
   const adminUrl = import.meta.env.VITE_ADMIN_URL || 'http://127.0.0.1:8000/admin/dashboard/';
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterStatus, setNewsletterStatus] = useState<'idle' | 'subscribed' | 'duplicate'>('idle');
 
   const socialLinks = [
-    { icon: Instagram, label: 'Instagram', href: '#' },
-    { icon: Twitter, label: 'Twitter', href: '#' },
-    { icon: Facebook, label: 'Facebook', href: '#' },
-    { icon: Youtube, label: 'YouTube', href: '#' },
+    { icon: Instagram, label: 'Instagram' },
+    { icon: Twitter, label: 'Twitter' },
+    { icon: Facebook, label: 'Facebook' },
+    { icon: Youtube, label: 'YouTube' },
   ];
+
+  const handleNewsletterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newsletterEmail.trim()) return;
+    const result = addNewsletterSubscriber(newsletterEmail.trim());
+    setNewsletterStatus(result.status);
+    if (result.status === 'subscribed') {
+      setNewsletterEmail('');
+    }
+  };
 
   const footerLinks = {
     collections: [
@@ -40,8 +53,8 @@ export const Footer: React.FC = () => {
     legal: [
       { label: 'Privacy Policy', path: '/privacy' },
       { label: 'Terms of Service', path: '/terms' },
-      { label: 'Shipping Policy', path: '/shipping' },
-      { label: 'Returns Policy', path: '/returns' },
+      { label: 'Shipping & Delivery', path: '/shipping' },
+      { label: 'Returns & Exchanges', path: '/returns' },
       { label: 'Cookie Policy', path: '/cookies' },
     ],
   };
@@ -112,14 +125,14 @@ export const Footer: React.FC = () => {
               </span>
               <div className="flex gap-3">
                 {socialLinks.map((social) => (
-                  <a
+                  <span
                     key={social.label}
-                    href={social.href}
                     aria-label={social.label}
-                    className="w-9 h-9 rounded-full bg-[#FAF9F6] border border-[#E8E5DF] flex items-center justify-center text-[#63605A] hover:bg-[#181716] hover:border-[#181716] hover:text-[#FAF9F6] transition-all"
+                    title={`${social.label} — shared profiles launch soon`}
+                    className="w-9 h-9 rounded-full bg-[#FAF9F6] border border-[#E8E5DF] flex items-center justify-center text-[#A29E96]"
                   >
                     <social.icon className="w-4.5 h-4.5" />
-                  </a>
+                  </span>
                 ))}
               </div>
             </div>
@@ -219,14 +232,7 @@ export const Footer: React.FC = () => {
             </div>
             <div className="lg:col-span-1">
               <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const input = e.currentTarget.querySelector('input') as HTMLInputElement;
-                  if (input?.value) {
-                    alert('Thank you for subscribing to The Atelier Gazette.');
-                    input.value = '';
-                  }
-                }}
+                onSubmit={handleNewsletterSubmit}
                 className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto sm:mx-0"
               >
                 <div className="relative w-full">
@@ -234,7 +240,13 @@ export const Footer: React.FC = () => {
                   <input
                     type="email"
                     required
+                    value={newsletterEmail}
+                    onChange={(e) => {
+                      setNewsletterEmail(e.target.value);
+                      setNewsletterStatus('idle');
+                    }}
                     placeholder="Enter your email address"
+                    aria-label="Email address for The Atelier Gazette"
                     className="w-full pl-11 pr-4 py-3.5 bg-[#FFFFFF] border border-[#E8E5DF] rounded-xl text-sm text-[#181716] placeholder-[#A29E96] focus:outline-none focus:border-[#181716] focus:ring-2 focus:ring-[#8A745C]/20 transition-all"
                   />
                 </div>
@@ -243,15 +255,47 @@ export const Footer: React.FC = () => {
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </form>
-              <p className="text-[11px] text-[#827E77] pt-2 text-center sm:text-left">
-                We respect your privacy. Unsubscribe at any moment.
-              </p>
+              {newsletterStatus === 'idle' && (
+                <p className="text-[11px] text-[#827E77] pt-2 text-center sm:text-left">
+                  We respect your privacy. Unsubscribe at any moment.
+                </p>
+              )}
+              {newsletterStatus === 'subscribed' && (
+                <p className="text-[11px] leading-relaxed text-[#2E5A44] pt-2 text-center sm:text-left flex items-start justify-center sm:justify-start gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+                  <span>
+                    You're on the list. This preview save sign-ups on this device — live salon emails arrive once
+                    the marketplace launches.
+                  </span>
+                </p>
+              )}
+              {newsletterStatus === 'duplicate' && (
+                <p className="text-[11px] text-[#63605A] pt-2 text-center sm:text-left flex items-start justify-center sm:justify-start gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-px text-[#8A745C]" aria-hidden="true" />
+                  <span>This email is already on the Gazette list.</span>
+                </p>
+              )}
             </div>
           </div>
         </div>
 
+        <div className="mt-12 border-t border-[#F3F1ED] pt-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#A29E96]">Legal</span>
+            {footerLinks.legal.map((link) => (
+              <button
+                key={link.path}
+                onClick={() => navigate(link.path)}
+                className="text-xs text-[#827E77] transition-colors hover:text-[#181716] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C] rounded-sm"
+              >
+                {link.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Bottom copyright & attribution */}
-        <div className="border-t border-[#F3F1ED] mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#827E77]">
+        <div className="border-t border-[#F3F1ED] mt-6 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#827E77]">
           <p>&copy; {new Date().getFullYear()} ATELIER Prêt-à-Porter. All rights reserved.</p>
           <div className="flex items-center gap-6 flex-wrap justify-center sm:justify-end">
             <button onClick={() => navigate('/')} className="hover:text-[#181716] transition-colors flex items-center gap-1">

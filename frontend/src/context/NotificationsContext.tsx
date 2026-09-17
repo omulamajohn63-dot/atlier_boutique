@@ -21,14 +21,17 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const previousIdsRef = useRef<string[]>([]);
+  const pollingDisabledRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
 
   const refreshNotifications = useCallback(async () => {
-    if (!user) {
+    if (!user || pollingDisabledRef.current || refreshInFlightRef.current) {
       setNotifications([]);
       setUnreadCount(0);
       return;
     }
 
+    refreshInFlightRef.current = true;
     try {
       const session = (await supabase?.auth.getSession())?.data.session;
       if (!session?.access_token) {
@@ -40,9 +43,14 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await api.getNotifications();
       setNotifications(response.results || []);
       setUnreadCount(typeof response.unread_count === 'number' ? response.unread_count : (response.results || []).filter((item) => !item.isRead).length);
-    } catch {
+    } catch (error) {
       setNotifications([]);
       setUnreadCount(0);
+      if ((error as { status?: number }).status === 401) {
+        pollingDisabledRef.current = true;
+      }
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }, [user]);
 
@@ -51,6 +59,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       setNotifications([]);
       setUnreadCount(0);
       previousIdsRef.current = [];
+      pollingDisabledRef.current = false;
       return;
     }
 

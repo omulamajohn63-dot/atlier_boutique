@@ -30,7 +30,7 @@ export function saveCartId(cartId: string): void {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}, includeAuth = true): Promise<T> {
+async function request<T>(endpoint: string, options: RequestInit = {}, includeAuth = true, requireAuth = false, retryUnauthorized = true): Promise<T> {
   const cartId = getOrCreateCartId();
   const headers = new Headers(options.headers || {});
   headers.set('Content-Type', 'application/json');
@@ -40,6 +40,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}, includeAu
     const session = (await supabase?.auth.getSession())?.data.session;
     if (session?.access_token) {
       headers.set('Authorization', `Bearer ${session.access_token}`);
+    } else if (requireAuth) {
+      const error = new Error('Authentication is required for this request.') as Error & { code?: string; status?: number };
+      error.code = 'AUTH_REQUIRED';
+      error.status = 401;
+      throw error;
     }
   }
 
@@ -51,7 +56,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}, includeAu
   let res = await fetch(`${API_BASE_URL}${endpoint}`, requestOptions);
 
   // Supabase access tokens are short-lived. Refresh once before surfacing a 401.
-  if (res.status === 401 && includeAuth && supabase) {
+  if (res.status === 401 && retryUnauthorized && includeAuth && requireAuth && supabase && headers.has('Authorization')) {
     const { data } = await supabase.auth.refreshSession();
     const refreshedToken = data.session?.access_token;
     if (refreshedToken) {
@@ -73,11 +78,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}, includeAu
     } catch {
       // ignore
     }
-    const message = errorJson.error?.message || `API request failed with status ${res.status}`;
-    const code = errorJson.error?.code || 'UNKNOWN_ERROR';
+    const errorObj = errorJson?.error;
+    const message = errorObj?.message || `API request failed with status ${res.status}.`;
+    const code = errorObj?.code || (res.status === 404 ? 'NOT_FOUND' : 'UNKNOWN_ERROR');
     const error = new Error(message) as Error & { code?: string; details?: unknown; status?: number };
     error.code = code;
-    error.details = errorJson.error?.details;
+    error.details = errorObj?.details;
     error.status = res.status;
     throw error;
   }
@@ -187,6 +193,10 @@ export const api = {
     return request<OrderDTO>(`/api/orders/${encodeURIComponent(orderNumber)}`);
   },
 
+  async getOrders(): Promise<{ count: number; results: OrderDTO[] }> {
+    return request<{ count: number; results: OrderDTO[] }>('/api/orders');
+  },
+
   // Payments
   async createPaymentIntent(
     orderNumber: string,
@@ -212,19 +222,19 @@ export const api = {
 
   // Admin
   async getNotifications(limit = 20): Promise<{ count: number; unread_count: number; results: CustomerNotification[] }> {
-    return request<{ count: number; unread_count: number; results: CustomerNotification[] }>(`/api/notifications${limit ? `?limit=${limit}` : ''}`);
+    return request<{ count: number; unread_count: number; results: CustomerNotification[] }>(`/api/notifications${limit ? `?limit=${limit}` : ''}`, {}, true, true, false);
   },
 
   async markNotificationRead(notificationId: string): Promise<{ ok: boolean; unread_count?: number }> {
     return request<{ ok: boolean; unread_count?: number }>(`/api/notifications/${encodeURIComponent(notificationId)}/read/`, {
       method: 'POST',
-    });
+    }, true, true);
   },
 
   async markAllNotificationsRead(): Promise<{ ok: boolean; unread_count: number; updated: number }> {
     return request<{ ok: boolean; unread_count: number; updated: number }>('/api/notifications/read-all/', {
       method: 'POST',
-    });
+    }, true, true);
   },
 
   async getAdminAccess(): Promise<{ status: string; role: string }> {

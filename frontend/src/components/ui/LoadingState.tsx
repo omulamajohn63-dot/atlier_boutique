@@ -148,6 +148,110 @@ export const InlineLoadingSpinner: React.FC<{ size?: 'sm' | 'md' | 'lg'; color?:
   );
 };
 
+export const OrdersListSkeleton: React.FC<{ count?: number }> = ({ count = 3 }) => {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading your orders">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="rounded-2xl border border-[#E8E5DF] bg-white p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4 animate-pulse">
+            <div className="space-y-2.5">
+              <div className="h-4 skeleton rounded w-40" />
+              <div className="h-3 skeleton rounded w-32" />
+            </div>
+            <div className="space-y-2.5">
+              <div className="ml-auto h-5 skeleton rounded w-24" />
+              <div className="ml-auto h-3 skeleton rounded w-16" />
+            </div>
+          </div>
+          <div className="mt-5 flex items-center gap-2.5 animate-pulse">
+            {Array.from({ length: 4 }).map((_, thumb) => (
+              <div key={thumb} className="h-16 w-14 skeleton rounded-lg sm:h-20 sm:w-[4.5rem]" />
+            ))}
+            <div className="h-16 w-14 skeleton rounded-lg sm:h-20 sm:w-[4.5rem]" />
+          </div>
+          <div className="mt-5 space-y-2 animate-pulse">
+            <div className="h-2 skeleton rounded w-full" />
+            <div className="h-2 skeleton rounded w-2/3" />
+          </div>
+          <div className="mt-5 flex justify-end animate-pulse">
+            <div className="h-9 skeleton rounded-full w-32" />
+          </div>
+        </div>
+      ))}
+      <span className="sr-only">Loading your orders</span>
+    </div>
+  );
+};
+
+export const OrderDetailSkeleton: React.FC = () => {
+  return (
+    <div className="mt-8 space-y-8" role="status" aria-label="Loading order details">
+      <div className="flex flex-wrap items-start justify-between gap-6 border-b border-[#F3F1ED] pb-8 animate-pulse">
+        <div className="space-y-3">
+          <div className="h-3 skeleton rounded w-24" />
+          <div className="h-9 skeleton rounded w-64" />
+          <div className="h-4 skeleton rounded w-44" />
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-8 skeleton rounded-full w-28" />
+          <div className="h-8 skeleton rounded-full w-24" />
+        </div>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[1.65fr_1fr] lg:gap-12">
+        <div className="space-y-8">
+          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-5 sm:p-6 animate-pulse">
+            <div className="h-3 skeleton rounded w-28" />
+            <div className="mt-5 h-3 skeleton rounded w-full" />
+            <div className="mt-2 h-3 skeleton rounded w-3/4" />
+          </div>
+          <div className="space-y-3.5">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-4 rounded-2xl border border-[#E8E5DF] bg-white p-4 animate-pulse sm:gap-5 sm:p-5">
+                <div className="h-20 w-16 shrink-0 skeleton rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 skeleton rounded w-3/4" />
+                  <div className="h-3 skeleton rounded w-1/3" />
+                  <div className="h-3 skeleton rounded w-1/2" />
+                </div>
+                <div className="h-5 skeleton rounded w-20" />
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-5 sm:p-6 animate-pulse">
+            <div className="h-3 skeleton rounded w-32" />
+            <div className="mt-4 space-y-2">
+              <div className="h-3 skeleton rounded w-1/2" />
+              <div className="h-3 skeleton rounded w-2/3" />
+              <div className="h-3 skeleton rounded w-1/3" />
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-6">
+          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-5 sm:p-6 space-y-3 animate-pulse">
+            <div className="h-3 skeleton rounded w-28" />
+            <div className="h-3 skeleton rounded w-full" />
+            <div className="h-3 skeleton rounded w-full" />
+            <div className="h-3 skeleton rounded w-full" />
+            <div className="h-6 skeleton rounded w-1/2 pt-1" />
+          </div>
+          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-5 sm:p-6 space-y-3 animate-pulse">
+            <div className="h-3 skeleton rounded w-24" />
+            <div className="h-3 skeleton rounded w-1/2" />
+            <div className="h-3 skeleton rounded w-2/3" />
+          </div>
+          <div className="rounded-2xl border border-[#E8E5DF] bg-[#FAF9F6] p-5 sm:p-6 space-y-2.5 animate-pulse">
+            <div className="h-10 skeleton rounded-full w-full" />
+            <div className="h-10 skeleton rounded-full w-full" />
+          </div>
+        </aside>
+      </div>
+      <span className="sr-only">Loading order details</span>
+    </div>
+  );
+};
+
 export const PageLoader: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#FAF9F6]">

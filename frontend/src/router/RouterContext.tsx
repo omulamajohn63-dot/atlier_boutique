@@ -1,9 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { CategorySlug } from '../types';
 
+export type ShopOccasion = 'everyday' | 'evening' | 'special-occasions';
+
 export type AppRoute =
   | { path: '/' }
-  | { path: '/shop'; category?: CategorySlug; collection?: 'best-sellers' | 'new-arrivals'; occasion?: string }
+  | {
+      path: '/shop';
+      category?: CategorySlug;
+      collection?: 'best-sellers' | 'new-arrivals';
+      occasion?: ShopOccasion;
+      query?: string;
+      sale?: boolean;
+    }
   | { path: '/product/:slug'; slug: string }
   | { path: '/cart' }
   | { path: '/checkout' }
@@ -17,7 +26,13 @@ export type AppRoute =
   | { path: '/account/addresses' }
   | { path: '/account/security' }
   | { path: '/about' }
-  | { path: '/wishlist' };
+  | { path: '/wishlist' }
+  | { path: '/recently-viewed' }
+  | { path: '/privacy' }
+  | { path: '/terms' }
+  | { path: '/shipping' }
+  | { path: '/returns' }
+  | { path: '/cookies' };
 
 interface RouterContextType {
   currentPath: string;
@@ -38,10 +53,16 @@ function parsePathToRoute(path: string): AppRoute {
   if (cleanPath === '/shop') {
     const params = new URLSearchParams(searchString);
     const collection = params.get('collection');
+    const occasion = params.get('occasion');
+    const sale = params.get('sale');
     return {
       path: '/shop',
       collection: collection === 'best-sellers' || collection === 'new-arrivals' ? collection : undefined,
-      occasion: params.get('occasion') || undefined,
+      occasion: occasion === 'everyday' || occasion === 'evening' || occasion === 'special-occasions'
+        ? occasion
+        : undefined,
+      query: params.get('q') || undefined,
+      sale: sale === 'true',
     };
   }
 
@@ -94,6 +115,20 @@ function parsePathToRoute(path: string): AppRoute {
 
   if (cleanPath === '/wishlist') {
     return { path: '/wishlist' };
+  }
+
+  if (cleanPath === '/recently-viewed') {
+    return { path: '/recently-viewed' };
+  }
+
+  if (
+    cleanPath === '/privacy' ||
+    cleanPath === '/terms' ||
+    cleanPath === '/shipping' ||
+    cleanPath === '/returns' ||
+    cleanPath === '/cookies'
+  ) {
+    return { path: cleanPath as '/privacy' | '/terms' | '/shipping' | '/returns' | '/cookies' };
   }
 
   if (cleanPath === '/checkout') {

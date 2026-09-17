@@ -3,13 +3,13 @@ import { useStore } from '../context/StoreContext';
 import { Product, ProductVariant } from '../types';
 import { useRouter } from '../router/RouterContext';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext';
 import { Price } from '../components/ui/Price';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { QuantitySelector } from '../components/ui/QuantitySelector';
 import { ProductCard } from '../components/ProductCard';
 import { formatPrice } from '../utils/currency';
+import { addRecentlyViewedProduct } from '../utils/recentlyViewed';
 import {
   ShieldCheck,
   Truck,
@@ -35,7 +35,6 @@ export interface ProductDetailPageProps {
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug, onQuickView }) => {
   const { navigate } = useRouter();
   const { addToCart } = useCart();
-  const { user } = useAuth();
   const { isWishlisted, toggleWishlist } = useWishlist();
   const { getProductBySlug, products } = useStore();
 
@@ -75,6 +74,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug, onQu
     setQuantity(1);
   }, [slug, product]);
 
+  // Record this piece in the visitor's recently-viewed trail.
+  useEffect(() => {
+    if (product?.id) {
+      addRecentlyViewedProduct(product.id);
+    }
+  }, [product?.id]);
+
   if (!product) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center space-y-5">
@@ -95,10 +101,6 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ slug, onQu
 
   const handleAddToCart = async () => {
     if (!selectedVariant || selectedVariant.stockQuantity <= 0) return;
-    if (!user) {
-      navigate('/account');
-      return;
-    }
     setStockError(null);
     const result = await addToCart(product, selectedVariant, quantity);
     if (result.success) {

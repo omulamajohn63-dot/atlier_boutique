@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { CartItem, Product, ProductVariant, VariantSize } from '../types';
 import { useStore } from './StoreContext';
-import { useAuth } from './AuthContext';
 import { FREE_SHIPPING_THRESHOLD, STANDARD_SHIPPING_COST, VAT_RATE } from '../utils/currency';
 import { api } from '../services/apiClient';
 import { CartDTO } from '../types/api';
@@ -53,7 +52,6 @@ function mapCartDtoToItems(dto: CartDTO): CartItem[] {
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { validatePromoCode } = useStore();
-  const { user, isLoading: isAuthLoading } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [serverSubtotal, setServerSubtotal] = useState<number>(0);
   const [serverItemCount, setServerItemCount] = useState<number>(0);
@@ -85,13 +83,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     variant: ProductVariant,
     quantity: number
   ): Promise<{ success: boolean; message?: string }> => {
-    if (isAuthLoading) {
-      return { success: false, message: 'Please wait while your account is being verified.' };
-    }
-    if (!user) {
-      return { success: false, message: 'Please sign in before adding items to your bag.' };
-    }
-
     try {
       setIsLoading(true);
       const updatedServerCart = await api.addCartItem(variant.id, quantity);

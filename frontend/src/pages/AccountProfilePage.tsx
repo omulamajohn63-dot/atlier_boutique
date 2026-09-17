@@ -1,64 +1,96 @@
-import React from 'react';
-import { UserRound, Save } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Mail, Phone, Save, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { AccountPageHeader } from '../components/account/AccountPageHeader';
 
 export const AccountProfilePage: React.FC = () => {
   const { user, isConfigured, updateProfile } = useAuth();
-  const [fullName, setFullName] = React.useState(user?.user_metadata?.full_name || '');
-  const [phone, setPhone] = React.useState(user?.user_metadata?.phone || '');
-  const [isSavingProfile, setIsSavingProfile] = React.useState(false);
-  const [profileMessage, setProfileMessage] = React.useState('');
+  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
+  const [phone, setPhone] = useState(user?.user_metadata?.phone || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!user) return;
     setFullName(user.user_metadata?.full_name || '');
     setPhone(user.user_metadata?.phone || '');
   }, [user]);
 
-  const handleProfileSave = async (event: React.FormEvent) => {
+  const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    setProfileMessage('');
-    setIsSavingProfile(true);
+    setMessage(null);
+    setIsSaving(true);
     const result = await updateProfile({ fullName: fullName.trim(), phone: phone.trim() });
-    setProfileMessage(result.error || 'Profile details updated.');
-    setIsSavingProfile(false);
+    setMessage(
+      result.error ? { type: 'error', text: result.error } : { type: 'success', text: 'Profile details updated.' }
+    );
+    setIsSaving(false);
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10">
-      <div className="rounded-[2rem] border border-[#E8E5DF] bg-white shadow-sm">
-        <div className="border-b border-[#E8E5DF] px-8 py-6 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#827E77]">Account</div>
-            <h1 className="font-serif text-3xl text-[#181716] mt-2">Personal Information</h1>
-          </div>
-          <UserRound className="h-7 w-7 text-[#8A745C]" />
+    <section className="w-full space-y-6">
+      <AccountPageHeader
+        eyebrow="Account"
+        title="Personal Information"
+        description="The details the atelier uses for orders and correspondence."
+      />
+
+      <form onSubmit={handleSave} className="rounded-2xl border border-[#E8E5DF] bg-white p-6 shadow-xs sm:p-8">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Input
+            label="Full name"
+            type="text"
+            required
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+            autoComplete="name"
+            icon={<UserRound className="h-4 w-4" />}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            required
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            autoComplete="tel"
+            icon={<Phone className="h-4 w-4" />}
+          />
         </div>
 
-        <form onSubmit={handleProfileSave} className="p-8 grid gap-5">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <label className="text-xs font-semibold uppercase tracking-[0.12em] text-[#63605A]">
-              Full name
-              <input type="text" required value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" className="mt-2 w-full rounded-xl border border-[#E8E5DF] bg-[#FAF9F6] px-3.5 py-3 text-sm text-[#181716] focus:border-[#181716] focus:outline-none" />
-            </label>
-            <label className="text-xs font-semibold uppercase tracking-[0.12em] text-[#63605A]">
-              Phone number
-              <input type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" className="mt-2 w-full rounded-xl border border-[#E8E5DF] bg-[#FAF9F6] px-3.5 py-3 text-sm text-[#181716] focus:border-[#181716] focus:outline-none" />
-            </label>
-          </div>
+        <div className="mt-5">
+          <Input
+            label="Email address"
+            type="email"
+            disabled
+            value={user?.email || ''}
+            helperText="Your sign-in email cannot be changed here."
+            icon={<Mail className="h-4 w-4" />}
+          />
+        </div>
 
-          <div className="rounded-[1.5rem] border border-[#E8E5DF] bg-[#FAF9F6] px-5 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#827E77]">Email</div>
-            <div className="mt-2 text-sm text-[#181716]">{user?.email || 'atelier@example.com'}</div>
-          </div>
+        <div className="mt-7 flex flex-col items-start gap-3 border-t border-[#F3F1ED] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-relaxed text-[#63605A]">
+            Saved instantly to your Atelier member profile.
+          </p>
+          <Button type="submit" isLoading={isSaving} disabled={!isConfigured} className="gap-2 uppercase tracking-wider text-xs">
+            <Save className="h-3.5 w-3.5" aria-hidden="true" />
+            Save Profile
+          </Button>
+        </div>
+      </form>
 
-          <div className="flex items-center gap-3">
-            <Button type="submit" size="sm" isLoading={isSavingProfile} disabled={!isConfigured} className="gap-2"><Save className="h-3.5 w-3.5" /> Save profile</Button>
-            {profileMessage && <p className="text-xs text-[#63605A]">{profileMessage}</p>}
-          </div>
-        </form>
-      </div>
-    </div>
+      {message &&
+        (message.type === 'success' ? (
+          <p className="rounded-xl border border-[#C8D8CA] bg-[#F2F6F2] px-4 py-3 text-sm text-[#2E5A44]" role="status">
+            {message.text}
+          </p>
+        ) : (
+          <p className="rounded-xl border border-[#F8B4B4] bg-[#FDF2F2] px-4 py-3 text-sm text-[#9E332B]" role="alert">
+            {message.text}
+          </p>
+        ))}
+    </section>
   );
 };

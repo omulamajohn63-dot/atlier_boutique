@@ -232,7 +232,7 @@ const LeftNavigation: React.FC<LeftNavigationProps> = ({
         label="Collections"
         onClick={() => onNavigate('/shop')}
       />
-      <NavButton label="Sale" onClick={() => onNavigate('/shop')} />
+      <NavButton label="Sale" onClick={() => onNavigate('/shop?sale=true')} />
     </nav>
   </div>
 );
@@ -585,7 +585,7 @@ const MobileMenu: React.FC<{
             <MobileLink label="Home" onClick={() => onNavigate('/')} />
             <MobileLink label="About" onClick={() => onNavigate('/about')} />
             <MobileLink label="New Arrivals" onClick={() => onNavigate('/shop?collection=new-arrivals')} />
-            <MobileLink label="Sale" onClick={() => onNavigate('/shop')} />
+            <MobileLink label="Sale" onClick={() => onNavigate('/shop?sale=true')} />
           </MobileSection>
 
           <MobileSection title="Categories">

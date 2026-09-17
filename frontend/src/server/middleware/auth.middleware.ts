@@ -30,9 +30,9 @@ export async function requireAdminAuth(req: Request, res: Response, next: NextFu
     }
   }
 
-  const localTokens = config.NODE_ENV === 'production'
+  const localTokens = config.NODE_ENV === 'production' || !process.env.ADMIN_API_TOKEN
     ? []
-    : [process.env.ADMIN_API_TOKEN, 'atelier-staff-jwt-token-2026', 'admin-secret-key-valid'].filter(Boolean);
+    : [process.env.ADMIN_API_TOKEN];
 
   if (!localTokens.includes(token)) {
     next(new UnauthorizedError('Invalid or expired administrative credentials.'));

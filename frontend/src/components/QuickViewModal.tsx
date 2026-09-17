@@ -5,7 +5,6 @@ import { Product, ProductVariant } from '../types';
 import { useCart } from '../context/CartContext';
 import { useStore } from '../context/StoreContext';
 import { useRouter } from '../router/RouterContext';
-import { useAuth } from '../context/AuthContext';
 import { Price } from './ui/Price';
 import { Button } from './ui/Button';
 import { QuantitySelector } from './ui/QuantitySelector';
@@ -21,7 +20,6 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({ product: initial
   const { addToCart } = useCart();
   const { getProductById } = useStore();
   const { navigate } = useRouter();
-  const { user } = useAuth();
 
   const product = initialProduct ? (getProductById(initialProduct.id) || initialProduct) : null;
 
@@ -60,11 +58,6 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({ product: initial
 
   const handleAddToCart = async () => {
     if (!selectedVariant || selectedVariant.stockQuantity <= 0) return;
-    if (!user) {
-      onClose();
-      navigate('/account');
-      return;
-    }
     const result = await addToCart(product, selectedVariant, quantity);
     if (result.success) {
       setAddedToCart(true);

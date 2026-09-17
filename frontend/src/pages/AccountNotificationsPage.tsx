@@ -1,21 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Inbox } from 'lucide-react';
 import { useRouter } from '../router/RouterContext';
 import { useNotifications } from '../context/NotificationsContext';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../services/apiClient';
 import { CustomerNotification } from '../types';
+import { AccountPageHeader } from '../components/account/AccountPageHeader';
 
 type Filter = 'all' | 'unread';
 
 export const AccountNotificationsPage: React.FC = () => {
   const { navigate } = useRouter();
-  const { refreshNotifications, markAsRead, markAllAsRead } = useNotifications();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { markAsRead, markAllAsRead } = useNotifications();
   const [items, setItems] = useState<CustomerNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
 
   useEffect(() => {
     let active = true;
+    if (isAuthLoading) return () => { active = false; };
+    if (!user) {
+      setItems([]);
+      setLoading(false);
+      return () => { active = false; };
+    }
+
     setLoading(true);
     api
       .getNotifications(500)
@@ -31,7 +41,7 @@ export const AccountNotificationsPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAuthLoading, user]);
 
   const visible = filter === 'unread' ? items.filter((item) => !item.isRead) : items;
   const unreadCount = items.filter((item) => !item.isRead).length;
@@ -52,57 +62,70 @@ export const AccountNotificationsPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="font-serif text-2xl text-[#181716]">Notifications</h2>
-            {unreadCount > 0 && (
-              <span className="rounded-full bg-[#FFF0E3] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8A5A2B]">
-                {unreadCount} unread
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-[#63605A]">Alerts about your orders, payments and account.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-full border border-[#E8E5DF] bg-[#FAF9F6] p-1">
-            {(['all', 'unread'] as Filter[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={`rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition ${filter === f ? 'bg-[#181716] text-[#FAF9F6]' : 'text-[#63605A] hover:text-[#181716]'}`}
-              >
-                {f === 'all' ? 'All' : 'Unread'}
-              </button>
-            ))}
-          </div>
-          {unreadCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleMarkAll()}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#C7BDAB] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8A745C] hover:bg-[#FAF9F6] transition-colors"
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-              Mark all as read
-            </button>
-          )}
-        </div>
+    <section className="w-full space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <AccountPageHeader
+          eyebrow="Account"
+          title="Notifications"
+          description="Alerts about your orders, payments and boutique account."
+        />
+        {unreadCount > 0 && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E5DF] bg-[#FAF9F6] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#63605A]">
+            <span className="h-2 w-2 rounded-full bg-[#8A745C]" aria-hidden="true" />
+            {unreadCount} unread
+          </span>
+        )}
       </div>
 
-      <div className="mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid grid-cols-2 gap-1 rounded-full border border-[#E8E5DF] bg-[#FAF9F6] p-1">
+          {(['all', 'unread'] as Filter[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`rounded-full px-5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                filter === f ? 'bg-[#181716] text-[#FAF9F6] shadow-xs' : 'text-[#63605A] hover:text-[#181716]'
+              }`}
+            >
+              {f === 'all' ? 'All' : 'Unread'}
+            </button>
+          ))}
+        </div>
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            onClick={() => void handleMarkAll()}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E5DF] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A745C] transition-colors hover:border-[#D8D3CB] hover:text-[#181716] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C]"
+          >
+            <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Mark all as read
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-3">
         {loading ? (
-          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-8 text-center text-sm text-[#63605A]">
-            Loading notifications...
+          <div className="space-y-3" role="status" aria-label="Loading notifications">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-2xl border border-[#E8E5DF] bg-white">
+                <div className="mx-5 mt-5 h-3 skeleton rounded w-24" />
+                <div className="mx-5 mt-3 h-3 skeleton rounded w-2/3" />
+              </div>
+            ))}
+            <span className="sr-only">Loading notifications</span>
           </div>
         ) : visible.length === 0 ? (
-          <div className="rounded-2xl border border-[#E8E5DF] bg-white p-10 text-center">
-            <Bell className="mx-auto h-8 w-8 text-[#C7BDAB]" />
-            <p className="mt-3 text-sm font-medium text-[#181716]">
-              {filter === 'unread' ? 'You are all caught up.' : 'No notifications yet.'}
+          <div className="rounded-2xl border border-[#E8E5DF] bg-white px-6 py-14 text-center">
+            <Inbox className="mx-auto h-8 w-8 text-[#C7BDAB]" strokeWidth={1.5} aria-hidden="true" />
+            <p className="mt-3 font-serif text-xl text-[#181716]">
+              {filter === 'unread' ? 'You are all caught up' : 'No notifications yet'}
             </p>
-            {filter === 'unread' && <p className="mt-1 text-xs text-[#63605A]">No unread notifications right now.</p>}
+            <p className="mx-auto mt-1.5 max-w-xs text-sm text-[#63605A]">
+              {filter === 'unread'
+                ? 'No unread notifications right now.'
+                : 'Order and account updates will appear here.'}
+            </p>
           </div>
         ) : (
           visible.map((notification) => (
@@ -110,26 +133,39 @@ export const AccountNotificationsPage: React.FC = () => {
               type="button"
               key={notification.id}
               onClick={() => handleOpen(notification)}
-              className={`w-full rounded-2xl border p-4 text-left transition ${notification.isRead ? 'border-[#E8E5DF] bg-white' : 'border-[#D8C7A6] bg-[#FFFDF8]'}`}
+              className={`flex w-full items-start gap-3.5 rounded-2xl border p-4 text-left transition-colors sm:p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C] ${
+                notification.isRead
+                  ? 'border-[#E8E5DF] bg-white hover:border-[#D8D3CB]'
+                  : 'border-[#D8C7A6] bg-[#FFFDF8] hover:border-[#C7BDAB]'
+              }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-[#827E77]">{notification.category}</div>
-                  <div className="mt-1 font-medium text-[#181716]">{notification.title}</div>
+              <span className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#FAF9F6] ring-1 ring-[#E8E5DF]">
+                <Bell className={`h-3 w-3 ${notification.isRead ? 'text-[#A29E96]' : 'text-[#8A745C]'}`} aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#827E77]">
+                      {notification.category}
+                    </p>
+                    <p className="mt-0.5 font-medium text-[#181716]">{notification.title}</p>
+                  </div>
+                  {!notification.isRead && (
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#8A745C]" aria-hidden="true" />
+                  )}
                 </div>
-                {!notification.isRead && <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#8A745C]" />}
-              </div>
-              <p className="mt-2 text-sm text-[#63605A]">{notification.message}</p>
-              <div className="mt-3 text-[11px] text-[#A29E96]">
-                {new Date(notification.createdAt).toLocaleString('en-KE', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
+                <p className="mt-1.5 text-sm leading-relaxed text-[#63605A]">{notification.message}</p>
+                <p className="mt-2.5 text-[11px] text-[#A29E96]">
+                  {new Date(notification.createdAt).toLocaleString('en-KE', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
               </div>
             </button>
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 };

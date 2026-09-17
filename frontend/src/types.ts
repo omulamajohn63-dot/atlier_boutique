@@ -115,7 +115,7 @@ export interface Order {
   total: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
-  paymentMethod?: 'mpesa' | 'card';
+  paymentMethod?: PaymentMethod;
   notes?: string;
   timeline: OrderTimelineEvent[];
   createdAt: string;

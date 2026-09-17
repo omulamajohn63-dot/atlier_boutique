@@ -5,8 +5,6 @@ import { Badge } from './ui/Badge';
 import { Eye, Heart, ShoppingBag } from 'lucide-react';
 import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext';
-import { useRouter } from '../router/RouterContext';
 
 export interface ProductCardProps {
   product: Product;
@@ -26,8 +24,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const [showQuickView, setShowQuickView] = useState(false);
   const { isWishlisted, toggleWishlist } = useWishlist();
   const { addToCart, isLoading } = useCart();
-  const { user } = useAuth();
-  const { navigate } = useRouter();
   const saved = isWishlisted(product.id);
 
   const totalStock = product.variants.reduce((acc, v) => acc + v.stockQuantity, 0);
@@ -39,10 +35,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const handleAddToCart = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (!selectedVariant || selectedVariant.stockQuantity <= 0) return;
-    if (!user) {
-      navigate('/account');
-      return;
-    }
 
     const result = await addToCart(product, selectedVariant, 1);
     if (result.success) {
@@ -163,7 +155,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {/* Add to Cart Overlay on Hover */}
-        {!isSoldOut && user && (
+        {!isSoldOut && (
           <div className="absolute inset-x-3 bottom-3 z-10 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 delay-75">
             <button
               type="button"
@@ -205,7 +197,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <button
           type="button"
           onClick={handleAddToCart}
-          disabled={isSoldOut || isLoading || !user}
+          disabled={isSoldOut || isLoading}
           className="mt-2 w-full rounded-lg border border-[#181716] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#181716] transition-all duration-200 hover:bg-[#181716] hover:text-[#FAF9F6] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A745C] disabled:cursor-not-allowed disabled:border-[#D8D3CB] disabled:text-[#A29E96] disabled:hover:bg-transparent disabled:hover:shadow-none active:scale-[0.98]"
           aria-label={isSoldOut ? `${product.name} is sold out` : `Add ${product.name} to cart`}
         >
