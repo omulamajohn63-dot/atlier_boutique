@@ -17,18 +17,17 @@ class AdminDashboardTests(TestCase):
             username='dashboard-staff', password='test-password', email='staff@example.com')
         self.category = Category.objects.create(name='Dresses', slug='dresses')
 
-    def test_storefront_root_returns_api_info_not_redirect(self):
+    def test_root_redirects_to_admin_landing_page(self):
         response = self.client.get('/')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/json')
-        self.assertEqual(response.json()['health'], '/api/health/')
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, '/admin/dashboard/landing/', fetch_redirect_response=False)
 
     def test_dashboard_requires_staff_session(self):
         response = self.client.get('/admin/dashboard/')
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/admin/login/', response.url)
+        self.assertIn('/admin/dashboard/login/', response.url)
 
     def test_staff_can_render_dashboard(self):
         self.client.force_login(self.staff)
@@ -1201,3 +1200,169 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(response.status_code, 302)
         product = Product.objects.get(slug='admin-silk-dress')
         self.assertEqual(product.images, [])
+
+
+class AdminAuthTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.superuser = User.objects.create_superuser(
+            username='root-admin', password='root-pass-123', email='root@example.com')
+        staff = User.objects.create_user(
+            username='plain-staff', password='staff-pass-123', email='staff@example.com')
+        staff.is_staff = True
+        staff.save()
+        self.staff = staff
+        self.customer = User.objects.create_user(
+            username='regular-user', password='user-pass-123', email='user@example.com')
+
+    def test_landing_page_accessible_anonymously(self):
+        response = self.client.get('/admin/dashboard/landing/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Administration Portal')
+
+    def test_landing_page_links_to_django_admin_site(self):
+        response = self.client.get('/admin/dashboard/landing/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/admin/"')
+
+    def test_login_page_renders(self):
+        response = self.client.get('/admin/dashboard/login/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sign In')
+
+    def test_staff_can_login_via_custom_form(self):
+        response = self.client.post('/admin/dashboard/login/', {
+            'username': 'plain-staff',
+            'password': 'staff-pass-123',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertIn('_auth_user_id', self.client.session)
+        self.assertEqual(int(self.client.session['_auth_user_id']), self.staff.id)
+
+    def test_login_honours_next_parameter(self):
+        response = self.client.post(
+            '/admin/dashboard/login/?next=/admin/dashboard/products/', {
+                'username': 'plain-staff',
+                'password': 'staff-pass-123',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, '/admin/dashboard/products/')
+
+    def test_non_staff_cannot_login(self):
+        response = self.client.post('/admin/dashboard/login/', {
+            'username': 'regular-user',
+            'password': 'user-pass-123',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'does not have admin access')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_login_view_redirects_authenticated_staff(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/login/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, '/admin/dashboard/')
+
+    def test_register_requires_superuser(self):
+        response = self.client.get('/admin/dashboard/register/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/dashboard/login/', response.url)
+
+        self.client.force_login(self.staff)
+        response = self.client.get('/admin/dashboard/register/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/dashboard/login/', response.url)
+
+    def test_invite_page_requires_superuser(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/admin-users/invite/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/admin/dashboard/login/', response.url)
+
+    def test_superuser_can_open_register_page(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.get('/admin/dashboard/register/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Create administrator account')
+
+    def test_superuser_can_create_admin_account_with_powers(self):
+        from django.contrib.auth.models import Group
+
+        group = Group.objects.create(name='Inventory Managers')
+        self.client.force_login(self.superuser)
+
+        response = self.client.post('/admin/dashboard/register/', {
+            'username': 'new-admin',
+            'email': 'new-admin@example.com',
+            'first_name': 'New',
+            'last_name': 'Admin',
+            'groups': [str(group.id)],
+            'is_superuser': 'on',
+            'is_active': 'on',
+            'password': 'Adm1n-S3cret!',
+            'password_confirm': 'Adm1n-S3cret!',
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/admin-users/')
+        user = get_user_model().objects.get(username='new-admin')
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password('Adm1n-S3cret!'))
+        self.assertIn(group, user.groups.all())
+        self.assertTrue(AdminNotification.objects.filter(
+            recipient=user,
+            title='New admin account created',
+        ).exists())
+
+    def test_superuser_can_create_staff_via_invite_page(self):
+        from django.contrib.auth.models import Group
+
+        group = Group.objects.create(name='Catalog Managers')
+        self.client.force_login(self.superuser)
+
+        response = self.client.post('/admin/dashboard/admin-users/invite/', {
+            'username': 'invited-admin',
+            'email': 'invited@example.com',
+            'first_name': 'Invited',
+            'last_name': 'Admin',
+            'groups': [str(group.id)],
+            'is_active': 'on',
+            'password': 'Inv!ted-2024',
+            'password_confirm': 'Inv!ted-2024',
+        })
+
+        self.assertRedirects(response, '/admin/dashboard/admin-users/')
+        user = get_user_model().objects.get(username='invited-admin')
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertIn(group, user.groups.all())
+
+    def test_signup_rejects_mismatched_passwords(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.post('/admin/dashboard/register/', {
+            'username': 'mismatch-admin',
+            'email': 'mismatch@example.com',
+            'is_active': 'on',
+            'password': 'Adm1n-S3cret!',
+            'password_confirm': 'Different-123!',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(get_user_model().objects.filter(
+            username='mismatch-admin').exists())

@@ -1,6 +1,105 @@
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import AuthenticationForm, UsernameField
+from django.contrib.auth.models import Group
+from django.contrib.auth import password_validation
+from django.core.exceptions import ValidationError
 
 from catalog.models import Category, Product, ProductVariant
+
+
+class AdminLoginForm(AuthenticationForm):
+    """Django built-in authentication form restricted to staff accounts."""
+
+    username = UsernameField(
+        label='Username or staff email',
+        widget=forms.TextInput(attrs={'autofocus': True}),
+    )
+
+    error_messages = {
+        **AuthenticationForm.error_messages,
+        'no_admin_access': 'This account does not have admin access.',
+    }
+
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        if not user.is_staff:
+            raise ValidationError(
+                self.error_messages['no_admin_access'],
+                code='no_admin_access',
+            )
+
+
+class AdminSignupForm(forms.ModelForm):
+    """Create a staff administrator account with full powers (superuser-only view)."""
+
+    password = forms.CharField(
+        label='Password',
+        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+        help_text='Must not be too similar to the username and must be at least 8 characters.',
+    )
+    password_confirm = forms.CharField(
+        label='Confirm password',
+        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+    )
+
+    class Meta:
+        model = get_user_model()
+        fields = (
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'groups',
+            'is_superuser',
+            'is_active',
+        )
+        labels = {
+            'username': 'Username',
+            'email': 'Email address',
+            'first_name': 'First name',
+            'last_name': 'Last name',
+            'groups': 'Groups / roles',
+            'is_superuser': 'Superuser (full control)',
+            'is_active': 'Account active',
+        }
+        widgets = {
+            'groups': forms.SelectMultiple(attrs={'size': 6}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['groups'].queryset = Group.objects.order_by('name')
+        self.fields['groups'].help_text = 'Select the permission groups this administrator belongs to.'
+        self.fields['is_superuser'].help_text = 'Superusers bypass all permission checks in the Django admin site.'
+        self.fields['is_active'].help_text = 'Unchecking this locks the account immediately.'
+
+    def clean_password(self):
+        password = self.cleaned_data.get('password')
+        username = self.cleaned_data.get('username')
+        if password:
+            password_validation.validate_password(password, user=None)
+        if password and username and password.lower() == username.lower():
+            raise ValidationError('The password must not match the username.')
+        return password
+
+    def clean_password_confirm(self):
+        password = self.cleaned_data.get('password')
+        password_confirm = self.cleaned_data.get('password_confirm')
+        if password and password_confirm and password != password_confirm:
+            raise ValidationError('The two password fields did not match.')
+        return password_confirm
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_staff = True
+        user.set_password(self.cleaned_data['password'])
+        if commit:
+            user.save()
+            self.save_m2m()
+        return user
 
 
 class CategoryForm(forms.ModelForm):

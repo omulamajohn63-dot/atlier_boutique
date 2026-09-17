@@ -20,25 +20,26 @@
 
   <div class="card">
     <div class="card-body">
-      <form method="post" style="display: flex; flex-direction: column; gap: 20px;">
+      <form method="post" style="display: flex; flex-direction: column; gap: 20px;" novalidate>
         {% csrf_token %}
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" for="id_name">Admin Name</label>
-          <input class="form-control" id="id_name" name="name" placeholder="Full name" required>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" for="id_email">Admin Email</label>
-          <input class="form-control" id="id_email" name="email" type="email" placeholder="name@atelier.local" required>
-        </div>
-        <div class="form-group" style="margin-bottom: 0;">
-          <label class="form-label" for="id_role">Role</label>
-          <select class="form-control" id="id_role" name="role">
-            <option>Super Admin</option>
-            <option>Catalog Manager</option>
-            <option>Inventory Manager</option>
-            <option>Operations Admin</option>
-          </select>
-        </div>
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            <i class="ph ph-warning-circle"></i> {{ form.non_field_errors|striptags }}
+          </div>
+        {% endif %}
+
+        {% for field in form %}
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="{{ field.id_for_label }}">
+              {{ field.label }}{% if field.field.required %} <span style="color: var(--status-danger);">*</span>{% endif %}
+            </label>
+            {{ field }}
+            {% if field.errors %}<div style="color: var(--status-danger); font-size: 12px; margin-top: 5px;">{{ field.errors|striptags }}</div>{% endif %}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+          </div>
+        {% endfor %}
+
         <div style="display: flex; gap: 12px; padding-top: 8px;">
           <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
           <a class="btn btn-secondary" href="/admin/dashboard/admin-users/">Cancel</a>

@@ -1,8 +1,12 @@
 from django.urls import path
 
 from .views import (
+    AdminLandingPageView,
+    AdminLoginView,
+    AdminLogoutView,
     AdminNotificationsPageView,
     AdminPageView,
+    AdminRegisterView,
     AdminUserInvitePageView,
     ApproveOrderPageView,
     CategoryCreatePageView,
@@ -28,6 +32,10 @@ from .views import (
 
 
 urlpatterns = [
+    path('landing/', AdminLandingPageView.as_view(), name='admin-landing'),
+    path('login/', AdminLoginView.as_view(), name='admin-login'),
+    path('logout/', AdminLogoutView.as_view(), name='admin-logout'),
+    path('register/', AdminRegisterView.as_view(), name='admin-register'),
     path('', DashboardView.as_view(), name='admin-dashboard'),
     path('confirm/', ConfirmActionView.as_view(), name='admin-confirm-action'),
     path('products/import/', ProductImportPageView.as_view(),

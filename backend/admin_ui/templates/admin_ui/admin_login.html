@@ -1,0 +1,45 @@
+{% extends "admin_ui/auth_base.html" %}
+
+{% block title %}Sign In | ATELIER Admin{% endblock %}
+
+{% block content %}
+<h1 class="auth-title">Welcome back</h1>
+<p class="auth-subtitle">Sign in with your administrator account to continue.</p>
+
+<form method="post" action="{% url 'admin-login' %}" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="errorlist">{{ form.non_field_errors|striptags }}</div>
+  {% endif %}
+
+  <input type="hidden" name="next" value="{{ next }}">
+
+  {% for field in form %}
+    {% if field.is_hidden %}
+      {{ field }}
+    {% else %}
+      <div class="form-group">
+        <label class="form-label" for="{{ field.id_for_label }}">
+          {{ field.label }}{% if field.field.required %}<span class="required"> *</span>{% endif %}
+        </label>
+        {{ field }}
+        {% if field.errors %}<div class="form-error">{{ field.errors|striptags }}</div>{% endif %}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+
+  <div class="auth-actions">
+    <button class="btn btn-primary" type="submit">
+      <i class="ph ph-sign-in"></i> Sign In
+    </button>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block footer %}
+Need an administrator account?
+<a href="{% url 'admin-register' %}">Create one</a>.
+{% endblock %}

@@ -8,11 +8,13 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import user_passes_test
+from django.contrib.auth.views import LoginView, LogoutView
 from django.db.models import Count, Q, Sum
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.safestring import mark_safe
@@ -24,15 +26,81 @@ from inventory.services import adjust_stock
 from orders.models import Order, OrderItem
 from orders.services import approve_order
 
-from .forms import CategoryForm, ProductCreateForm, ProductUpdateForm, StockAdjustmentForm
-from .models import AdminNotification
+from .forms import (
+    AdminLoginForm,
+    AdminSignupForm,
+    CategoryForm,
+    ProductCreateForm,
+    ProductUpdateForm,
+    StockAdjustmentForm,
+)
+from .models import AdminNotification, notify_staff
 
 
 def is_staff(user):
     return user.is_authenticated and user.is_staff
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+def is_superuser(user):
+    return user.is_authenticated and user.is_superuser
+
+
+class AdminLandingPageView(View):
+    template_name = 'admin_ui/admin_landing_page.html'
+
+    def get(self, request):
+        return render(request, self.template_name, {
+            'page_title': 'ATELIER Admin',
+            'is_authenticated_staff': bool(
+                request.user.is_authenticated and request.user.is_staff),
+            'is_superuser': bool(request.user.is_authenticated and request.user.is_superuser),
+            'user': request.user if request.user.is_authenticated else None,
+        })
+
+
+class AdminLoginView(LoginView):
+    template_name = 'admin_ui/admin_login.html'
+    authentication_form = AdminLoginForm
+    redirect_authenticated_user = True
+    next_page = reverse_lazy('admin-dashboard')
+
+
+class AdminLogoutView(LogoutView):
+    next_page = 'admin-landing'
+
+
+@method_decorator(user_passes_test(is_superuser, login_url='admin-login'), name='dispatch')
+class AdminRegisterView(View):
+    template_name = 'admin_ui/admin_register.html'
+
+    def get(self, request):
+        return self.render_form(request, AdminSignupForm())
+
+    def post(self, request):
+        form = AdminSignupForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            notify_staff(
+                category='system',
+                title='New admin account created',
+                message=f'{user.get_full_name() or user.username} ({user.email}) was added as an administrator.',
+                recipient=user,
+            )
+            messages.success(
+                request, f'Administrator {user.username} created and granted admin powers.')
+            return redirect('admin-users')
+        return self.render_form(request, form)
+
+    def render_form(self, request, form):
+        return render(request, self.template_name, {
+            'form': form,
+            'page_title': 'Create administrator account',
+            'page_subtitle': 'Grant admin powers to a new staff account.',
+            'submit_label': 'Create administrator',
+        })
+
+
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ConfirmActionView(View):
     template_name = 'admin_ui/confirm_page.html'
 
@@ -167,7 +235,7 @@ class ConfirmActionView(View):
         return redirect('admin-dashboard')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class UnreadNotificationsView(View):
     def get(self, request):
         base = AdminNotification.objects.filter(
@@ -196,7 +264,7 @@ class UnreadNotificationsView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class AdminNotificationsPageView(View):
     template_name = 'admin_ui/notifications_page.html'
 
@@ -210,7 +278,7 @@ class AdminNotificationsPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class MarkAllNotificationsReadView(View):
     def post(self, request):
         updated = AdminNotification.objects.filter(
@@ -222,7 +290,7 @@ class MarkAllNotificationsReadView(View):
         return redirect('admin-notifications')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class MarkNotificationReadView(View):
     def post(self, request, notification_id):
         notification = AdminNotification.objects.filter(
@@ -241,7 +309,7 @@ class MarkNotificationReadView(View):
         return JsonResponse({'ok': True, 'unread_count': unread_count})
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ApproveOrderPageView(View):
     def post(self, request, order_id):
         order = Order.objects.filter(pk=order_id).first()
@@ -256,7 +324,7 @@ class ApproveOrderPageView(View):
         return redirect('admin-orders')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductImportPageView(View):
     template_name = 'admin_ui/product_import_page.html'
 
@@ -303,7 +371,7 @@ class ProductImportPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductImportTemplateDownloadView(View):
     def get(self, request):
         output = io.StringIO()
@@ -504,7 +572,7 @@ class AdminPageView(View):
         },
     }
 
-    @method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+    @method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
     def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
 
@@ -909,7 +977,7 @@ class AdminPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class DashboardView(View):
     template_name = 'admin_ui/dashboard.html'
 
@@ -1232,7 +1300,7 @@ class DashboardView(View):
                 default_storage.delete(storage_path)
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class CategoryCreatePageView(View):
     template_name = 'admin_ui/category_form_page.html'
 
@@ -1256,7 +1324,7 @@ class CategoryCreatePageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class CategoryEditPageView(View):
     template_name = 'admin_ui/category_form_page.html'
 
@@ -1292,7 +1360,7 @@ class CategoryEditPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class CategoryDeletePageView(View):
     def get(self, request, category_id):
         category = Category.objects.filter(pk=category_id).first()
@@ -1309,7 +1377,7 @@ class CategoryDeletePageView(View):
         return redirect('admin-dashboard')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductCreatePageView(View):
     template_name = 'admin_ui/product_form_page.html'
 
@@ -1342,7 +1410,7 @@ class ProductCreatePageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductEditPageView(View):
     template_name = 'admin_ui/product_form_page.html'
 
@@ -1389,7 +1457,7 @@ class ProductEditPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductDetailPageView(View):
     template_name = 'admin_ui/product_detail_page.html'
 
@@ -1415,7 +1483,7 @@ class ProductDetailPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class OrderDetailPageView(View):
     template_name = 'admin_ui/order_detail_page.html'
 
@@ -1479,7 +1547,7 @@ class OrderDetailPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductDuplicatePageView(View):
     def get(self, request, product_id):
         product = Product.objects.filter(pk=product_id).first()
@@ -1522,7 +1590,7 @@ class ProductDuplicatePageView(View):
             return redirect('admin-dashboard')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductArchivePageView(View):
     def get(self, request, product_id):
         product = Product.objects.filter(pk=product_id).first()
@@ -1534,7 +1602,7 @@ class ProductArchivePageView(View):
         return redirect('admin-products')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProductDeletePageView(View):
     def get(self, request, product_id):
         product = Product.objects.filter(pk=product_id).first()
@@ -1551,20 +1619,40 @@ class ProductDeletePageView(View):
         return redirect('admin-products')
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_superuser, login_url='admin-login'), name='dispatch')
 class AdminUserInvitePageView(View):
     template_name = 'admin_ui/admin_user_invite_page.html'
 
     def get(self, request):
         return render(request, self.template_name, {
             'page_title': 'Invite Admin',
-            'page_subtitle': 'Create a staff administrator profile.',
+            'page_subtitle': 'Create a staff administrator account and grant admin powers.',
             'submit_label': 'Send Invite',
-            'form': None,
+            'form': AdminSignupForm(),
+        })
+
+    def post(self, request):
+        form = AdminSignupForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            notify_staff(
+                category='system',
+                title='New admin account created',
+                message=f'{user.get_full_name() or user.username} ({user.email}) was added as an administrator.',
+                recipient=user,
+            )
+            messages.success(
+                request, f'Administrator {user.username} created and granted admin powers.')
+            return redirect('admin-users')
+        return render(request, self.template_name, {
+            'page_title': 'Invite Admin',
+            'page_subtitle': 'Create a staff administrator account and grant admin powers.',
+            'submit_label': 'Send Invite',
+            'form': form,
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class ProfileSettingsPageView(View):
     template_name = 'admin_ui/profile_settings_page.html'
 
@@ -1578,7 +1666,7 @@ class ProfileSettingsPageView(View):
         })
 
 
-@method_decorator(user_passes_test(is_staff, login_url='/admin/login/'), name='dispatch')
+@method_decorator(user_passes_test(is_staff, login_url='admin-login'), name='dispatch')
 class StockAdjustmentPageView(View):
     template_name = 'admin_ui/stock_form_page.html'
 

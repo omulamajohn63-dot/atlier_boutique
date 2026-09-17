@@ -1,0 +1,62 @@
+{% extends "admin_ui/auth_base.html" %}
+
+{% block title %}ATELIER Admin Portal{% endblock %}
+
+{% block content %}
+{% if user.is_authenticated and user.is_staff %}
+  <h1 class="auth-title">Hello, {{ user.get_full_name|default:user.username }}</h1>
+  <p class="auth-subtitle">
+    Welcome to the ATELIER administration portal. Choose where you want to go.
+  </p>
+
+  <div class="auth-actions">
+    <a class="btn btn-primary" href="{% url 'admin-dashboard' %}">
+      <i class="ph ph-squares-four"></i> Open Dashboard
+    </a>
+    <a class="btn btn-secondary" href="/admin/">
+      <i class="ph ph-database"></i> Django Admin Site
+    </a>
+    {% if user.is_superuser %}
+      <a class="btn btn-secondary" href="{% url 'admin-register' %}">
+        <i class="ph ph-user-plus"></i> Create Administrator Account
+      </a>
+    {% endif %}
+  </div>
+{% elif user.is_authenticated %}
+  <h1 class="auth-title">No admin access</h1>
+  <p class="auth-subtitle">
+    Your account does not have administrator privileges. Contact a superuser to request access.
+  </p>
+  <div class="auth-actions">
+    <a class="btn btn-secondary" href="{% url 'admin-logout' %}">
+      <i class="ph ph-sign-out"></i> Sign Out
+    </a>
+  </div>
+{% else %}
+  <h1 class="auth-title">Administration Portal</h1>
+  <p class="auth-subtitle">
+    Restricted area. Administrator access is required to continue.
+  </p>
+
+  <div class="auth-actions">
+    <a class="btn btn-primary" href="{% url 'admin-login' %}">
+      <i class="ph ph-sign-in"></i> Sign In
+    </a>
+    <a class="btn btn-secondary" href="{% url 'admin-register' %}">
+      <i class="ph ph-user-plus"></i> Create Administrator Account
+    </a>
+  </div>
+
+  <div class="auth-divider">or</div>
+
+  <div class="auth-actions" style="margin-top: 10px;">
+    <a class="btn btn-secondary" href="/admin/">
+      <i class="ph ph-arrow-up-right"></i> Open Django Admin Site
+    </a>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block footer %}
+&copy; ATELIER Pr&ecirc;t-&agrave;-Porter &middot; Staff portal
+{% endblock %}
