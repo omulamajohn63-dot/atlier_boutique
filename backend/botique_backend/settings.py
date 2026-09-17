@@ -147,6 +147,7 @@ SUPABASE_JWT_JWKS_URL = os.getenv(
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -240,6 +241,30 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Served by WhiteNoise in production: compressed, hashed, cache-busted assets.
+STORAGES = {
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+WHITENOISE_MAX_AGE = 60 * 60 * 24 * 365
+
+
+# Security hardening. The secure-cookie and SSL flags are only meaningful
+# behind TLS termination (e.g. Render's load balancer), so they are applied
+# only when NOT running in DEBUG mode.
+if not DEBUG:
+    # Trust the proxy's forwarded protocol (Render/LB terminate TLS).
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = os.getenv(
+        'DJANGO_SESSION_COOKIE_SECURE', 'True').lower() in {'1', 'true', 'yes', 'on'}
+    CSRF_COOKIE_SECURE = os.getenv(
+        'DJANGO_CSRF_COOKIE_SECURE', 'True').lower() in {'1', 'true', 'yes', 'on'}
+    SECURE_SSL_REDIRECT = os.getenv(
+        'DJANGO_SECURE_SSL_REDIRECT', 'False').lower() in {'1', 'true', 'yes', 'on'}
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'same-origin'
 
 # Default primary key field type for Django models that do not
 # explicitly define one.  The project uses UUID primary keys on

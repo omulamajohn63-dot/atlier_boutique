@@ -1,0 +1,54 @@
+# Render Blueprint — deploys the Django backend.
+#
+# Usage: push to GitHub, create a blueprint in Render, or run the manual
+# "New Web Service -> Docker" flow. After creation, set the `sync: false`
+# secrets (below) in the dashboard — Render will refuse to start until the
+# required environment variables are supplied via your DATABASE_URL.
+#
+# See README.md for the full deployment runbook.
+services:
+  - type: web
+    name: boutique-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /api/health/
+    autoDeploy: true
+
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "False"
+      # Tighten this to your app's public host once the first deploy succeeds,
+      # e.g. "boutique-backend.onrender.com".
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "*"
+      - key: FRONTEND_ORIGIN
+        value: "http://localhost:5173"
+      - key: MPESA_ENV
+        value: "sandbox"
+
+      # Secrets — set each via the Render dashboard ("sync: false" values are
+      # never stored in source control):
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: PAYMENT_WEBHOOK_SECRET
+        sync: false
+      - key: MPESA_CALLBACK_SECRET
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_SHORTCODE
+        sync: false
+      - key: MPESA_PASSKEY
+        sync: false
+      - key: MPESA_CALLBACK_URL
+        sync: false
