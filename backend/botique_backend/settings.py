@@ -42,7 +42,10 @@ PAYMENT_WEBHOOK_SECRET = os.getenv(
     'PAYMENT_WEBHOOK_SECRET', 'local-development-payment-secret')
 MPESA_CALLBACK_SECRET = os.getenv(
     'MPESA_CALLBACK_SECRET', 'local-development-mpesa-secret')
-FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN', 'http://127.0.0.1:3000')
+FRONTEND_ORIGIN = os.getenv(
+    'FRONTEND_ORIGIN',
+    'http://localhost:3000'
+).rstrip('/')
 CORS_ALLOWED_ORIGINS = [
     FRONTEND_ORIGIN,
     'http://localhost:3000',
@@ -50,6 +53,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept', 'authorization', 'content-type', 'origin', 'x-csrftoken',

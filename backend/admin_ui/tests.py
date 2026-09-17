@@ -17,11 +17,12 @@ class AdminDashboardTests(TestCase):
             username='dashboard-staff', password='test-password', email='staff@example.com')
         self.category = Category.objects.create(name='Dresses', slug='dresses')
 
-    def test_storefront_root_redirects_to_frontend(self):
+    def test_storefront_root_returns_api_info_not_redirect(self):
         response = self.client.get('/')
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, 'http://127.0.0.1:3000/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        self.assertEqual(response.json()['health'], '/api/health/')
 
     def test_dashboard_requires_staff_session(self):
         response = self.client.get('/admin/dashboard/')
