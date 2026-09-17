@@ -1272,16 +1272,53 @@ class AdminAuthTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertRedirects(response, '/admin/dashboard/')
 
-    def test_register_requires_superuser(self):
+    def test_register_page_accessible_to_anonymous_and_staff(self):
         response = self.client.get('/admin/dashboard/register/')
 
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('/admin/dashboard/login/', response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Create administrator account')
 
         self.client.force_login(self.staff)
         response = self.client.get('/admin/dashboard/register/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_login_page_links_to_register(self):
+        response = self.client.get('/admin/dashboard/login/')
+
+        self.assertContains(response, '/admin/dashboard/register/')
+
+    def test_anonymous_signup_creates_staff_account_without_superuser(self):
+        response = self.client.post('/admin/dashboard/register/', {
+            'username': 'public-admin',
+            'email': 'public@example.com',
+            'first_name': 'Public',
+            'last_name': 'Admin',
+            'is_active': 'on',
+            'password': 'Pub!ic-2024',
+            'password_confirm': 'Pub!ic-2024',
+        })
+
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/admin/dashboard/login/', response.url)
+        self.assertRedirects(response, '/admin/dashboard/login/')
+        user = get_user_model().objects.get(username='public-admin')
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.is_active)
+
+    def test_anonymous_cannot_grant_superuser(self):
+        response = self.client.post('/admin/dashboard/register/', {
+            'username': 'public-super',
+            'email': 'public-super@example.com',
+            'is_active': 'on',
+            'is_superuser': 'on',
+            'password': 'Pub!ic-2024',
+            'password_confirm': 'Pub!ic-2024',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        user = get_user_model().objects.get(username='public-super')
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
 
     def test_invite_page_requires_superuser(self):
         self.client.force_login(self.staff)

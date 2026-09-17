@@ -73,15 +73,16 @@ class AdminLogoutView(LogoutView):
         return self.post(request, *args, **kwargs)
 
 
-@method_decorator(user_passes_test(is_superuser, login_url='admin-login'), name='dispatch')
 class AdminRegisterView(View):
     template_name = 'admin_ui/admin_register.html'
 
     def get(self, request):
-        return self.render_form(request, AdminSignupForm())
+        return self.render_form(
+            request, AdminSignupForm(allow_superuser=bool(request.user.is_superuser)))
 
     def post(self, request):
-        form = AdminSignupForm(request.POST)
+        form = AdminSignupForm(
+            request.POST, allow_superuser=bool(request.user.is_superuser))
         if form.is_valid():
             user = form.save()
             notify_staff(
@@ -92,7 +93,9 @@ class AdminRegisterView(View):
             )
             messages.success(
                 request, f'Administrator {user.username} created and granted admin powers.')
-            return redirect('admin-users')
+            if request.user.is_authenticated:
+                return redirect('admin-users')
+            return redirect('admin-login')
         return self.render_form(request, form)
 
     def render_form(self, request, form):
@@ -1632,11 +1635,11 @@ class AdminUserInvitePageView(View):
             'page_title': 'Invite Admin',
             'page_subtitle': 'Create a staff administrator account and grant admin powers.',
             'submit_label': 'Send Invite',
-            'form': AdminSignupForm(),
+            'form': AdminSignupForm(allow_superuser=True),
         })
 
     def post(self, request):
-        form = AdminSignupForm(request.POST)
+        form = AdminSignupForm(request.POST, allow_superuser=True)
         if form.is_valid():
             user = form.save()
             notify_staff(

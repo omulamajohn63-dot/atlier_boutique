@@ -69,12 +69,23 @@ class AdminSignupForm(forms.ModelForm):
             'groups': forms.SelectMultiple(attrs={'size': 6}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, allow_superuser=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.allow_superuser = allow_superuser
         self.fields['groups'].queryset = Group.objects.order_by('name')
         self.fields['groups'].help_text = 'Select the permission groups this administrator belongs to.'
         self.fields['is_superuser'].help_text = 'Superusers bypass all permission checks in the Django admin site.'
         self.fields['is_active'].help_text = 'Unchecking this locks the account immediately.'
+        if not allow_superuser:
+            self.fields['is_superuser'].disabled = True
+            self.initial['is_superuser'] = False
+            self.fields['is_superuser'].help_text = ('Only a superuser can grant full control.')
+
+    def clean_is_superuser(self):
+        is_superuser = self.cleaned_data.get('is_superuser') or False
+        if getattr(self, 'allow_superuser', False):
+            return is_superuser
+        return False
 
     def clean_password(self):
         password = self.cleaned_data.get('password')
@@ -95,6 +106,8 @@ class AdminSignupForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.is_staff = True
+        if not getattr(self, 'allow_superuser', False):
+            user.is_superuser = False
         user.set_password(self.cleaned_data['password'])
         if commit:
             user.save()
