@@ -255,6 +255,43 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 60 * 60 * 24 * 365
 
 
+# Logging — send Django request errors to stderr so 5xx tracebacks surface in
+# the Render console. Without this, errors are swallowed by Django's default
+# Null handler and become impossible to diagnose.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+
 # Security hardening. The secure-cookie and SSL flags are only meaningful
 # behind TLS termination (e.g. Render's load balancer), so they are applied
 # only when NOT running in DEBUG mode.

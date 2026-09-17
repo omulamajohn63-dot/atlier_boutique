@@ -1366,3 +1366,20 @@ class AdminAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(get_user_model().objects.filter(
             username='mismatch-admin').exists())
+
+    def test_logout_via_custom_view_signs_out_and_redirects_to_landing(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/logout/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, '/admin/dashboard/landing/')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_dashboard_sign_out_link_targets_custom_logout_view(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.get('/admin/dashboard/')
+
+        self.assertContains(response, '/admin/dashboard/logout/')
+        self.assertNotContains(response, 'href="/admin/logout/"')

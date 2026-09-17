@@ -67,6 +67,10 @@ class AdminLoginView(LoginView):
 
 class AdminLogoutView(LogoutView):
     next_page = 'admin-landing'
+    http_method_names = ['get', 'post', 'options']
+
+    def get(self, request, *args, **kwargs):
+        return self.post(request, *args, **kwargs)
 
 
 @method_decorator(user_passes_test(is_superuser, login_url='admin-login'), name='dispatch')
