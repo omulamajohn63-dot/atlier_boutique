@@ -15,7 +15,6 @@ services:
     plan: free
     healthCheckPath: /api/health/
     autoDeploy: true
-    preDeployCommand: python manage.py migrate --noinput
 
     envVars:
       - key: DJANGO_DEBUG
