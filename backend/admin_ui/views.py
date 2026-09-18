@@ -341,16 +341,7 @@ class ProductImportPageView(View):
     def post(self, request):
         file = request.FILES.get('file')
         image_files = request.FILES.getlist('image_files')
-        generate_ai = request.POST.get('generate_ai') == 'on'
         result = None
-
-        if generate_ai and not ProductGenerationService.is_configured():
-            messages.error(
-                request,
-                'AI image generation is enabled, but GOOGLE_API_KEY is not configured. '
-                'Add the key to backend/.env or your environment before enabling AI.',
-            )
-            generate_ai = False
 
         if not file:
             messages.error(request, 'Please upload a CSV/XLSX file.')
@@ -359,7 +350,6 @@ class ProductImportPageView(View):
                 file,
                 image_files,
                 created_by=request.user,
-                generate_ai=generate_ai,
             )
             messages.success(
                 request,
@@ -373,7 +363,6 @@ class ProductImportPageView(View):
             'page_title': 'Bulk Product Import',
             'page_subtitle': 'Upload products with an optional image set.',
             'result': result,
-            'ai_available': ProductGenerationService.is_configured(),
             'download_template_url': '/admin/dashboard/products/import/download-template/',
         })
 
@@ -996,7 +985,10 @@ class DashboardView(View):
         if action == 'create-product':
             form = ProductCreateForm(request.POST, request.FILES)
             if form.is_valid():
-                self.create_product(form.cleaned_data,
+                metadata = ProductGenerationService.generate_product_metadata(
+                    form.cleaned_data['name'])
+                data = {**form.cleaned_data, **(metadata or {})}
+                self.create_product(data,
                                     request.FILES.get('image_file'))
                 messages.success(request, 'Product and first variant created.')
                 return redirect('admin-products')
@@ -1395,14 +1387,8 @@ class ProductCreatePageView(View):
         form = ProductCreateForm(request.POST, request.FILES)
         if form.is_valid():
             metadata = ProductGenerationService.generate_product_metadata(
-                form.cleaned_data['name'],
-                str(form.cleaned_data['category'].pk),
-            )
-            if not metadata:
-                messages.error(
-                    request, 'AI could not generate product details. Check GOOGLE_API_KEY and try again.')
-                return self.render_form(request, form)
-            data = {**form.cleaned_data, **metadata}
+                form.cleaned_data['name'])
+            data = {**form.cleaned_data, **(metadata or {})}
             DashboardView.create_product(data, request.FILES.get('image_file'))
             messages.success(request, 'Product and first variant created.')
             return redirect('admin-dashboard')

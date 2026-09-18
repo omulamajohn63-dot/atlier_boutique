@@ -17,12 +17,6 @@
     </div>
   </div>
 
-  {% if not ai_available %}
-  <div class="alert" style="background: var(--status-warning-bg); color: var(--status-warning); border: 1px solid #F0D99C; margin-bottom: 24px;">
-    <i class="ph ph-warning"></i> AI image generation is unavailable until GOOGLE_API_KEY is configured in the backend environment.
-  </div>
-  {% endif %}
-
   <div class="card">
     <div class="card-body">
       <form method="post" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 20px;">
@@ -35,10 +29,6 @@
           <label class="form-label" for="id_image_files">Product images</label>
           <input class="form-control" type="file" name="image_files" multiple accept="image/*" id="id_image_files">
           <div class="form-text">Upload images that match your product names or SKUs.</div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" name="generate_ai" id="generate_ai" style="width: 16px; height: 16px; accent-color: var(--accent);">
-          <label for="generate_ai" style="font-size: 13px; font-weight: 500; color: var(--text); margin: 0;">Generate product description and image with AI from the product name</label>
         </div>
         <div style="display: flex; gap: 12px; padding-top: 8px;">
           <button class="btn btn-primary" type="submit"><i class="ph ph-upload-simple"></i> Import Products</button>

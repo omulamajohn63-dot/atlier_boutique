@@ -1,10 +1,8 @@
-from unittest.mock import patch
-
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from catalog.models import Category, Product, ProductVariant
-from catalog.services import ProductGenerationService, ProductImportService
+from catalog.services import ProductGenerationService
 
 
 class CatalogApiTests(TestCase):
@@ -73,20 +71,6 @@ class CatalogApiTests(TestCase):
         product.refresh_from_db()
         self.assertEqual(product.details, [])
         self.assertEqual(product.images, [])
-
-    def test_generate_ai_row_payload_is_noop_without_google_key(self):
-        row = {
-            'name': 'Luna Silk Dress',
-            'category': 'Dresses',
-            'color': 'Ivory',
-            'size': 'M',
-        }
-
-        with patch.object(ProductGenerationService, 'is_configured', return_value=False):
-            result = ProductImportService.generate_ai_row_payload(
-                row, generate_ai=True)
-
-        self.assertEqual(result, {})
 
     def test_generate_internal_code_is_unique_and_name_based(self):
         first_code = ProductGenerationService.generate_internal_code(

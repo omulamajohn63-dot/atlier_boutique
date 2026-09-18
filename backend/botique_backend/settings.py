@@ -248,6 +248,12 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Served by WhiteNoise in production: compressed, hashed, cache-busted assets.
 STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        'OPTIONS': {
+            'location': BASE_DIR / 'media',
+        },
+    },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },

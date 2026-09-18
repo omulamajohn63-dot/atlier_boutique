@@ -1,15 +1,12 @@
 import csv
 import io
-import json
-import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from django.conf import settings
-from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils.text import slugify
@@ -47,7 +44,7 @@ class ImportResult:
 
 
 class ProductGenerationService:
-    """Optional Google AI enrichment for imported products."""
+    """Lightweight local product metadata generation."""
 
     @staticmethod
     def generate_internal_code(name: str) -> str:
@@ -64,10 +61,6 @@ class ProductGenerationService:
         return candidate[:80]
 
     @staticmethod
-    def is_configured() -> bool:
-        return bool(os.getenv('GOOGLE_API_KEY'))
-
-    @staticmethod
     def _next_unique_slug(base_slug: str) -> str:
         candidate = slugify(base_slug)[:100] or 'product'
         suffix = 2
@@ -77,25 +70,8 @@ class ProductGenerationService:
         return candidate
 
     @staticmethod
-    def _safe_json_text(raw_value):
-        if raw_value is None:
-            return ''
-        if isinstance(raw_value, str):
-            return raw_value.strip()
-        if isinstance(raw_value, dict):
-            return json.dumps(raw_value)
-        return str(raw_value)
-
-    @staticmethod
-    def _parse_json_response(raw_value) -> dict:
-        text = ProductGenerationService._safe_json_text(raw_value)
-        if text.startswith('```'):
-            text = re.sub(r'^```(?:json)?\s*|\s*```$', '',
-                          text.strip(), flags=re.IGNORECASE)
-        return json.loads(text)
-
-    @staticmethod
-    def _fallback_product_metadata(name: str) -> dict:
+    def generate_product_metadata(name: str) -> Optional[dict]:
+        """Build storefront copy and a unique URL slug without any AI service."""
         product_name = (name or '').strip() or 'New Product'
         return {
             'description': (
@@ -103,206 +79,7 @@ class ProductGenerationService:
                 'craftsmanship to your everyday wardrobe.'
             ),
             'slug': ProductGenerationService._next_unique_slug(product_name),
-            'ai_generated': False,
         }
-
-    @staticmethod
-    def _build_model_candidates(preferred_model: str, fallback_models: Sequence[str]) -> List[str]:
-        candidates: List[str] = []
-        seen = set()
-        for model_name in [preferred_model, *fallback_models]:
-            cleaned = (model_name or '').strip()
-            if cleaned and cleaned not in seen:
-                seen.add(cleaned)
-                candidates.append(cleaned)
-        return candidates
-
-    @staticmethod
-    def _call_google(model_name: str, prompt: str, response_mime_type: Optional[str] = None):
-        if not ProductGenerationService.is_configured():
-            return None
-        try:
-            from google import genai
-        except Exception:
-            return None
-
-        client = genai.Client(api_key=os.environ['GOOGLE_API_KEY'])
-        candidates = ProductGenerationService._build_model_candidates(
-            model_name,
-            [
-                'gemini-3.6-flash',
-                'gemini-2.5-flash',
-                'gemini-2.5-flash-lite',
-                'gemini-2.0-flash',
-            ],
-        )
-
-        last_error = None
-        for candidate in candidates:
-            try:
-                request_kwargs = {
-                    'model': candidate,
-                    'contents': prompt,
-                }
-                if response_mime_type:
-                    request_kwargs['config'] = {
-                        'response_mime_type': response_mime_type}
-                response = client.models.generate_content(**request_kwargs)
-
-                if hasattr(response, 'text'):
-                    return response.text
-                if isinstance(response, dict):
-                    return response.get('text') or json.dumps(response)
-                if hasattr(response, 'candidates'):
-                    candidate_obj = getattr(response, 'candidates', [None])[0]
-                    if candidate_obj is None:
-                        continue
-                    if hasattr(candidate_obj, 'content'):
-                        parts = getattr(candidate_obj.content, 'parts', [])
-                        if parts:
-                            return ''.join(
-                                getattr(part, 'text', '')
-                                for part in parts
-                                if getattr(part, 'text', '')
-                            )
-                    if hasattr(candidate_obj, 'text'):
-                        return candidate_obj.text
-            except Exception as exc:
-                last_error = exc
-                continue
-
-        if last_error is not None:
-            return None
-        return None
-
-    @staticmethod
-    def generate_product_assets(name: str, category: str = '', color: str = '', size: str = '', style: str = '') -> Optional[dict]:
-        if not ProductGenerationService.is_configured():
-            return None
-
-        product_name = (name or '').strip()
-        if not product_name:
-            return None
-
-        prompt = (
-            f"Create premium boutique ecommerce product metadata for '{product_name}'. "
-            f"Category: {category or 'general'}; color: {color or 'neutral'}; "
-            f"size: {size or 'standard'}; style: {style or 'classic modern boutique'}. "
-            "Respond with valid JSON containing exactly these keys: "
-            "title, slug, description, image_prompt. "
-            "The title should be a polished product name. The slug should be URL-safe and concise. "
-            "The description should be a single persuasive paragraph for a boutique storefront. "
-            "The image_prompt should describe a clean editorial studio product shot."
-        )
-
-        try:
-            raw = ProductGenerationService._call_google(
-                os.getenv('GOOGLE_PRODUCT_MODEL', 'gemini-3.6-flash'),
-                prompt,
-                response_mime_type='application/json',
-            )
-            if not raw:
-                return None
-
-            text = ProductGenerationService._safe_json_text(raw)
-            if text.startswith('```'):
-                text = text.strip('`')
-                if text.lower().startswith('json'):
-                    text = text[4:].lstrip()
-
-            payload = json.loads(text)
-            title = str(payload.get('title') or product_name).strip()
-            slug = slugify(payload.get('slug') or title)[
-                :100] or slugify(product_name)[:100] or 'product'
-            slug = ProductGenerationService._next_unique_slug(slug)
-            description = str(payload.get('description') or '').strip() or (
-                f"{title} designed for elevated everyday styling and boutique craftsmanship."
-            )
-            image_prompt = str(payload.get(
-                'image_prompt') or f"{title} product shot, premium boutique fashion, studio lighting, ecommerce photography").strip()
-        except Exception:
-            return None
-
-        try:
-            image_result = ProductGenerationService._call_google(
-                os.getenv('GOOGLE_IMAGE_MODEL', 'imagen-3.0-generate-002'),
-                image_prompt,
-            )
-            image_url = None
-            if image_result:
-                image_bytes = None
-                if hasattr(image_result, 'generated_images'):
-                    first_image = getattr(
-                        image_result, 'generated_images', [None])[0]
-                    if first_image is not None:
-                        image_bytes = getattr(first_image, 'image_bytes', None) or getattr(
-                            first_image, 'bytes', None)
-                        if image_bytes is None and hasattr(first_image, 'image'):
-                            image_bytes = getattr(first_image.image, 'image_bytes', None) or getattr(
-                                first_image.image, 'bytes', None)
-                elif isinstance(image_result, dict):
-                    candidate = image_result.get(
-                        'generated_images') or image_result.get('images') or []
-                    if candidate:
-                        first = candidate[0]
-                        if isinstance(first, dict):
-                            image_bytes = first.get(
-                                'image_bytes') or first.get('bytes')
-                if image_bytes:
-                    filename = f'{slugify(title)[:60] or "product"}.png'
-                    saved_path = default_storage.save(
-                        f'products/{filename}', ContentFile(image_bytes))
-                    image_url = settings.MEDIA_URL.rstrip(
-                        '/') + '/' + saved_path
-        except Exception:
-            image_url = None
-
-        return {
-            'title': title,
-            'slug': slug,
-            'description': description,
-            'image_url': image_url,
-            'image_prompt': image_prompt,
-        }
-
-    @staticmethod
-    def generate_product_metadata(name: str, category: str = '') -> Optional[dict]:
-        """Generate storefront copy and a URL slug without generating an image."""
-        if not (name or '').strip():
-            return None
-
-        product_name = name.strip()
-        fallback = ProductGenerationService._fallback_product_metadata(
-            product_name)
-        if not ProductGenerationService.is_configured():
-            return fallback
-        prompt = (
-            f"Create ecommerce metadata for the boutique product '{product_name}'. "
-            f"Category: {category or 'general'}. Respond with valid JSON containing exactly "
-            "description and slug. The description must be one polished, persuasive sentence "
-            "for a fashion storefront. The slug must be lowercase URL-safe words separated by "
-            "hyphens and based on the product name."
-        )
-        try:
-            raw = ProductGenerationService._call_google(
-                os.getenv('GOOGLE_PRODUCT_MODEL', 'gemini-3.6-flash'),
-                prompt,
-                response_mime_type='application/json',
-            )
-            if not raw:
-                return None
-            payload = ProductGenerationService._parse_json_response(raw)
-            description = str(payload.get('description') or '').strip()
-            slug = slugify(payload.get('slug') or product_name)[:100]
-            if not description or not slug:
-                return fallback
-            return {
-                'description': description,
-                'slug': ProductGenerationService._next_unique_slug(slug),
-                'ai_generated': True,
-            }
-        except Exception:
-            return fallback
 
 
 class ProductImportService:
@@ -418,36 +195,8 @@ class ProductImportService:
             )
 
     @staticmethod
-    def generate_ai_row_payload(row: dict, generate_ai: bool = False) -> dict:
-        if not generate_ai:
-            return {}
-
-        product_name = (row.get('name') or '').strip()
-        category_name = (row.get('category') or '').strip()
-        color_name = (row.get('color') or '').strip()
-        size_name = (row.get('size') or '').strip()
-        if not product_name:
-            return {}
-
-        assets = ProductGenerationService.generate_product_assets(
-            product_name,
-            category=category_name,
-            color=color_name,
-            size=size_name,
-        )
-        if not assets:
-            return {}
-
-        return {
-            'name': assets.get('title') or product_name,
-            'slug': assets.get('slug') or slugify(product_name),
-            'description': assets.get('description') or '',
-            'image_url': assets.get('image_url') or '',
-        }
-
-    @staticmethod
     @transaction.atomic
-    def import_products_from_file(file, image_files=None, created_by=None, generate_ai: bool = False) -> ImportResult:
+    def import_products_from_file(file, image_files=None, created_by=None) -> ImportResult:
         """
         Import product rows from a CSV or XLSX file with per-row validation.
         Returns a structured ImportResult containing all row outcomes.
@@ -536,20 +285,7 @@ class ProductImportService:
                 results.rows_failed += 1
                 continue
 
-            ai_assets = ProductImportService.generate_ai_row_payload(
-                row, generate_ai=generate_ai)
-            if ai_assets:
-                name = ai_assets.get('name') or name
-                description = ai_assets.get('description') or description
-                generated_slug = ai_assets.get('slug') or slugify(name)
-                if generated_slug:
-                    slug_value = generated_slug
-                else:
-                    slug_value = slugify(name) + '-' + slugify(sku)
-                generated_image_url = ai_assets.get('image_url') or ''
-            else:
-                slug_value = slugify(name) + '-' + slugify(sku)
-                generated_image_url = ''
+            slug_value = f"{slugify(name)}-{slugify(sku)}"
 
             # Convert file price to minor units, assuming two decimal places.
             price_minor = int(round(float(price) * 100))
@@ -581,9 +317,6 @@ class ProductImportService:
             product.is_active = is_active
             product.status = Product.Status.ACTIVE
             product.slug = slug_value or product.slug or slugify(name)
-            if generated_image_url:
-                product.images = [generated_image_url] + [img for img in (
-                    product.images or []) if img and img != generated_image_url]
             product.save(update_fields=[
                 'name', 'description', 'price_minor', 'category', 'size', 'color',
                 'stock_quantity', 'status', 'is_active', 'slug', 'sku', 'images', 'updated_at'
@@ -625,10 +358,9 @@ class ProductImportService:
         return results
 
 
-def import_products_from_file(file, image_files=None, created_by=None, generate_ai: bool = False):
+def import_products_from_file(file, image_files=None, created_by=None):
     return ProductImportService.import_products_from_file(
         file,
         image_files,
         created_by,
-        generate_ai=generate_ai,
     )

@@ -477,7 +477,6 @@ class AdminDashboardTests(TestCase):
         generate_metadata.return_value = {
             'description': 'A polished silk dress for evening occasions.',
             'slug': 'luna-silk-dress',
-            'ai_generated': True,
         }
         self.client.force_login(self.staff)
         image_buffer = BytesIO()
@@ -503,7 +502,7 @@ class AdminDashboardTests(TestCase):
                          'A polished silk dress for evening occasions.')
         self.assertEqual(variant.sku, 'AT-LUNA-SILK-DRESS')
         generate_metadata.assert_called_once_with(
-            'Luna Silk Dress', str(self.category.id))
+            'Luna Silk Dress')
 
     def test_staff_products_page_renders_product_model_image(self):
         self.client.force_login(self.staff)
@@ -621,7 +620,7 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Bulk Product Import')
 
-    def test_ai_upload_without_google_key_shows_clear_warning(self):
+    def test_staff_can_bulk_import_products(self):
         self.client.force_login(self.staff)
         csv_data = (
             'name,price,category,sku,stock_quantity\n'
@@ -633,14 +632,13 @@ class AdminDashboardTests(TestCase):
             {
                 'file': SimpleUploadedFile(
                     'products.csv', csv_data.encode('utf-8'), content_type='text/csv'),
-                'generate_ai': 'on',
             },
             follow=True,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'AI image generation is enabled')
-        self.assertContains(response, 'GOOGLE_API_KEY')
+        self.assertContains(response, 'Import complete: 1 rows succeeded')
+        self.assertTrue(Product.objects.filter(sku='SKU-LUNA-001').exists())
 
     def test_staff_can_open_product_detail_page(self):
         product = Product.objects.create(
@@ -928,7 +926,7 @@ class AdminDashboardTests(TestCase):
             'image_file': upload,
         })
 
-        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertRedirects(response, '/admin/dashboard/products/')
         product = Product.objects.get(slug='silk-dress')
         self.assertEqual(product.price_minor, 24500)
         self.assertEqual(product.variants.get().stock_quantity, 4)
@@ -958,7 +956,7 @@ class AdminDashboardTests(TestCase):
             'image_file': upload,
         })
 
-        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertRedirects(response, '/admin/dashboard/products/')
         product = Product.objects.get(slug='silk-dress-upload')
         self.assertEqual(len(product.images), 1)
         self.assertIn('/media/products/', product.images[0])
@@ -986,7 +984,7 @@ class AdminDashboardTests(TestCase):
             'status': Product.Status.ACTIVE,
         })
 
-        self.assertRedirects(response, '/admin/dashboard/')
+        self.assertRedirects(response, '/admin/dashboard/products/')
         product.refresh_from_db()
         self.assertEqual(product.name, 'Linen Top Updated')
         self.assertEqual(product.slug, 'linen-top-updated')
